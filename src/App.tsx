@@ -43,6 +43,7 @@ import { auth, db, googleProvider } from './firebase';
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { collection, doc, onSnapshot, setDoc, updateDoc, addDoc, query, where, getDoc, getDocs, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { AdminDashboard } from './components/AdminDashboard';
+import { Toast, ToastType, ConfirmDialog } from './components/ui/Feedback';
 
 enum OperationType {
   CREATE = 'create',
@@ -110,6 +111,7 @@ interface Request {
   days?: number; // for renewal
   trackingStatus?: TrackingStatus;
   completedAt?: string;
+  deliveryMethod?: 'pickup' | 'delivery';
 }
 
 interface Book {
@@ -1314,7 +1316,13 @@ const ProfileView = ({
   requests,
   language,
   setLanguage,
-  t
+  t,
+  showToast,
+  showConfirm,
+  setModalMode,
+  setBookName,
+  setLockBookName,
+  setIsBorrowModalOpen
 }: { 
   onBack: () => void, 
   onShowQr: () => void, 
@@ -1327,6 +1335,12 @@ const ProfileView = ({
   language: Language,
   setLanguage: (l: Language) => void,
   t: any,
+  showToast: (m: string, type?: ToastType) => void,
+  showConfirm: (title: string, message: string, onConfirm: () => void, type?: 'primary' | 'danger') => void,
+  setModalMode: (m: 'borrow' | 'return') => void,
+  setBookName: (n: string) => void,
+  setLockBookName: (l: boolean) => void,
+  setIsBorrowModalOpen: (o: boolean) => void,
   key?: string 
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1387,18 +1401,18 @@ const ProfileView = ({
   const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (oldPassword && newPassword) {
-      alert(t.processed);
+      showToast(t.processed);
       setIsChangePasswordOpen(false);
       setOldPassword('');
       setNewPassword('');
     } else {
-      alert(t.loading);
+      showToast(t.loading, 'info');
     }
   };
 
   const handleSaveAddress = async (e: React.FormEvent) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(e.currentTarget as HTMLFormElement);
     const isDefault = formData.get('isDefault') === 'on';
     
     try {
@@ -1440,13 +1454,14 @@ const ProfileView = ({
   };
 
   const handleDeleteAddress = async (id: string) => {
-    if (confirm(t.confirm)) {
+    showConfirm(t.delete, t.confirm, async () => {
       try {
         await deleteDoc(doc(db, `users/${auth.currentUser!.uid}/addresses`, id));
+        showToast(t.processed);
       } catch (err) {
         handleFirestoreError(err, OperationType.DELETE, `users/${auth.currentUser!.uid}/addresses/${id}`);
       }
-    }
+    }, 'danger');
   };
 
   const handleSetDefault = async (id: string) => {
@@ -1676,6 +1691,20 @@ const ProfileView = ({
                         : t.waitingForDelivery}
                     </p>
                   </div>
+                  {book.dueDate && (
+                    <button
+                      onClick={() => {
+                        setModalMode('return');
+                        setBookName(renderTranslatable(book.title, language));
+                        setLockBookName(true);
+                        setIsBorrowModalOpen(true);
+                        setActiveStatModal(null);
+                      }}
+                      className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold hover:bg-blue-100 transition-colors self-center"
+                    >
+                      {t.return}
+                    </button>
+                  )}
                 </div>
               ))
             ) : (
@@ -2288,6 +2317,7 @@ export default function App() {
   const [lockBookName, setLockBookName] = useState(false);
   const [renewDays, setRenewDays] = useState(7);
   const [selectedRenewBooks, setSelectedRenewBooks] = useState<string[]>([]);
+  const [deliveryMethod, setDeliveryMethod] = useState<'pickup' | 'delivery'>('pickup');
   const [pendingRequests, setPendingRequests] = useState<Request[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [books, setBooks] = useState<Book[]>(ALL_BOOKS);
@@ -2297,6 +2327,30 @@ export default function App() {
   ]);
 
   const [isAuthReady, setIsAuthReady] = useState(false);
+
+  // Feedback state
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type?: 'primary' | 'danger';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void, type: 'primary' | 'danger' = 'primary') => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm, type });
+  };
 
   useEffect(() => {
     if (!isAuthReady || !isLoggedIn || !auth.currentUser) return;
@@ -2471,14 +2525,16 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setIsLoggedIn(false);
-      setUserRole('user');
-      setView('login');
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
+    showConfirm(t.logout, t.logoutConfirm, async () => {
+      try {
+        await signOut(auth);
+        setIsLoggedIn(false);
+        setUserRole('user');
+        setView('login');
+      } catch (error) {
+        console.error("Logout failed:", error);
+      }
+    });
   };
 
   const handleAdminAction = async (id: string, status: 'approved' | 'rejected') => {
@@ -2652,6 +2708,12 @@ export default function App() {
             language={language}
             setLanguage={setLanguage}
             t={t}
+            showToast={showToast}
+            showConfirm={showConfirm}
+            setModalMode={setModalMode}
+            setBookName={setBookName}
+            setLockBookName={setLockBookName}
+            setIsBorrowModalOpen={setIsBorrowModalOpen}
           />
         )}
         {view === 'trackingList' && (
@@ -2788,6 +2850,36 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              {modalMode === 'borrow' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">{t.deliveryMethod}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setDeliveryMethod('pickup')}
+                      className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all ${
+                        deliveryMethod === 'pickup' 
+                        ? 'bg-blue-500 text-white border-blue-500 shadow-md' 
+                        : 'bg-white text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <Building2 size={18} />
+                      <span className="text-[10px] font-bold">{t.pickup}</span>
+                    </button>
+                    <button
+                      onClick={() => setDeliveryMethod('delivery')}
+                      className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all ${
+                        deliveryMethod === 'delivery' 
+                        ? 'bg-blue-500 text-white border-blue-500 shadow-md' 
+                        : 'bg-white text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <Phone size={18} />
+                      <span className="text-[10px] font-bold">{t.delivery}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           
@@ -2820,7 +2912,7 @@ export default function App() {
                         id: newReqRef.id,
                         type: 'return',
                         bookId: book.id,
-                        bookTitle: book.title, // Pass the map
+                        bookTitle: book.title,
                         userId: auth.currentUser.uid,
                         userName: auth.currentUser.displayName || t.userName,
                         status: 'pending',
@@ -2829,6 +2921,8 @@ export default function App() {
                         quantity: parseInt(quantity),
                         createdAt: serverTimestamp()
                       });
+                      showToast(t.processed);
+                      setIsBorrowModalOpen(false);
                     }
                   } else {
                     const book = ALL_BOOKS.find(b => renderTranslatable(b.title, language) === bookName);
@@ -2842,11 +2936,13 @@ export default function App() {
                       userName: auth.currentUser.displayName || t.userName,
                       status: 'pending',
                       trackingStatus: 'pending',
+                      deliveryMethod: deliveryMethod,
                       date: new Date().toISOString(),
                       quantity: parseInt(quantity),
                       createdAt: serverTimestamp()
                     });
-                    alert(t.processed);
+                    showToast(t.processed);
+                    setIsBorrowModalOpen(false);
                   }
                 } catch (err) {
                   console.error('Action failed:', err);
@@ -2946,7 +3042,7 @@ export default function App() {
                     });
                   }
                   setSelectedRenewBooks([]);
-                  alert(t.processed);
+                  showToast(t.processed);
                 } catch (err) {
                   console.error('Renewal failed:', err);
                   handleFirestoreError(err, OperationType.CREATE, 'requests');
@@ -2969,6 +3065,27 @@ export default function App() {
             </button>
           </div>
         </div>
+        <AnimatePresence>
+          {toast && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={() => setToast(null)}
+            />
+          )}
+        </AnimatePresence>
+
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          type={confirmDialog.type}
+          onConfirm={() => {
+            confirmDialog.onConfirm();
+            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          }}
+          onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        />
       </Modal>
     </div>
   );

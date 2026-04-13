@@ -81,7 +81,8 @@ service cloud.firestore {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
           (request.auth.uid == "70t9c2f4NfMieoBALjueQnyRHLg2") ||
-          request.auth.uid == "ezLgaHfXhtYV8XpCX986mIYWWHv1");
+          request.auth.uid == "ezLgaHfXhtYV8XpCX986mIYWWHv1" ||
+          (request.auth.token.email == "z11bao36g@gmail.com" && request.auth.token.email_verified == true));
     }
     function uidUnchanged() {
       return !('id' in request.resource.data) || request.resource.data.id == request.auth.uid;
@@ -122,7 +123,9 @@ service cloud.firestore {
              data.category is string && data.category.size() > 0 && data.category.size() < 50 &&
              (!('cover' in data) || (data.cover is string && data.cover.size() < 500)) &&
              (!('description' in data) || data.description is map) &&
-             (!('createdAt' in data) || data.createdAt is timestamp);
+             (!('storageLocation' in data) || (data.storageLocation is string && data.storageLocation.size() < 200)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     function isValidRequest(data) {
@@ -139,7 +142,8 @@ service cloud.firestore {
              (!('quantity' in data) || data.quantity is number) &&
              (!('trackingStatus' in data) || (data.trackingStatus is string && data.trackingStatus.size() < 50)) &&
              (!('completedAt' in data) || data.completedAt is timestamp || (data.completedAt is string && data.completedAt.size() < 50)) &&
-             (!('createdAt' in data) || data.createdAt is timestamp);
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     function isValidEvent(data) {
@@ -152,7 +156,8 @@ service cloud.firestore {
              data.category is string && data.category.size() > 0 && data.category.size() < 50 &&
              (!('image' in data) || (data.image is string && data.image.size() < 500)) &&
              (!('agenda' in data) || data.agenda is map) &&
-             (!('createdAt' in data) || data.createdAt is timestamp);
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     function isValidAddress(data) {

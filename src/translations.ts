@@ -182,6 +182,12 @@ export const translations = {
     recentUpdates: 'Recent Updates',
     markAllRead: 'Mark all as read',
     noNotifications: 'No notifications yet',
+    deliveryMethod: 'Delivery Method',
+    pickup: 'Library Pickup',
+    delivery: 'Online Delivery',
+    delete: 'Delete',
+    logoutConfirm: 'Are you sure you want to logout?',
+    quantity: 'Quantity',
   },
   'zh-HK': {
     // Common
@@ -364,5 +370,11 @@ export const translations = {
     recentUpdates: '近期更新',
     markAllRead: '全部標記為已讀',
     noNotifications: '暫無通知',
+    deliveryMethod: '借閱方式',
+    pickup: '圖書館自取',
+    delivery: '線上寄送',
+    delete: '刪除',
+    logoutConfirm: '您確定要登出嗎？',
+    quantity: '數量',
   }
 };

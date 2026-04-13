@@ -1,13 +1,60 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  BookOpen, Users, LayoutDashboard, Settings, 
-  LogOut, Plus, Edit2, Trash2, Search, Bell, 
-  Filter, ChevronLeft, ChevronRight, CheckCircle2,
-  AlertCircle, Clock, MapPin, Download, FileText, Calendar
-} from 'lucide-react';
+import { BookOpen, Users, LayoutDashboard, Settings, LogOut, Plus, Edit2, Trash2, Search, Bell, Filter, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Clock, MapPin, Download, FileText, Calendar, Building2, Phone } from 'lucide-react';
 import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { Toast, ToastType, ConfirmDialog } from './ui/Feedback';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // Types
 // Assuming these are passed or imported
@@ -22,6 +69,30 @@ export const AdminDashboard = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+
+  // Feedback state
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type?: 'primary' | 'danger';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void, type: 'primary' | 'danger' = 'primary') => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm, type });
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'users'));
@@ -61,7 +132,8 @@ export const AdminDashboard = ({
     category: 'catPhilosophy',
     cover: '',
     descriptionEn: '',
-    descriptionZh: ''
+    descriptionZh: '',
+    storageLocation: ''
   });
 
   const [eventForm, setEventForm] = useState({
@@ -106,6 +178,7 @@ export const AdminDashboard = ({
 
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
+    const path = 'events';
     try {
       const eventData = {
         title: { en: eventForm.titleEn, zh: eventForm.titleZh },
@@ -118,29 +191,36 @@ export const AdminDashboard = ({
       };
 
       if (editingEvent) {
-        await updateDoc(doc(db, 'events', editingEvent.id), eventData);
+        await updateDoc(doc(db, path, editingEvent.id), eventData);
       } else {
-        await addDoc(collection(db, 'events'), {
+        const newDocRef = doc(collection(db, path));
+        await setDoc(newDocRef, {
           ...eventData,
+          id: newDocRef.id,
           createdAt: serverTimestamp()
         });
       }
       setIsEventModalOpen(false);
     } catch (error) {
-      console.error("Error saving event:", error);
-      alert("Failed to save event");
+      handleFirestoreError(error, editingEvent ? OperationType.UPDATE : OperationType.CREATE, path);
     }
   };
 
   const handleDeleteEvent = async (eventId: string) => {
-    if (window.confirm('Are you sure you want to delete this event?')) {
-      try {
-        await deleteDoc(doc(db, 'events', eventId));
-      } catch (error) {
-        console.error("Error deleting event:", error);
-        alert("Failed to delete event");
-      }
-    }
+    showConfirm(
+      "Delete Event",
+      "Are you sure you want to delete this event? This action cannot be undone.",
+      async () => {
+        const path = 'events';
+        try {
+          await deleteDoc(doc(db, path, eventId));
+          showToast("Event deleted successfully");
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, path);
+        }
+      },
+      'danger'
+    );
   };
 
   const handleOpenBookModal = (book?: any) => {
@@ -154,13 +234,14 @@ export const AdminDashboard = ({
         category: book.category || 'catPhilosophy',
         cover: book.cover || '',
         descriptionEn: book.description?.en || '',
-        descriptionZh: book.description?.['zh-HK'] || ''
+        descriptionZh: book.description?.['zh-HK'] || '',
+        storageLocation: book.storageLocation || ''
       });
     } else {
       setEditingBook(null);
       setBookForm({
         titleEn: '', titleZh: '', authorEn: '', authorZh: '',
-        category: 'catPhilosophy', cover: '', descriptionEn: '', descriptionZh: ''
+        category: 'catPhilosophy', cover: '', descriptionEn: '', descriptionZh: '', storageLocation: ''
       });
     }
     setIsBookModalOpen(true);
@@ -168,6 +249,7 @@ export const AdminDashboard = ({
 
   const handleSaveBook = async (e: React.FormEvent) => {
     e.preventDefault();
+    const path = 'books';
     try {
       const bookData = {
         title: { en: bookForm.titleEn, 'zh-HK': bookForm.titleZh },
@@ -175,13 +257,14 @@ export const AdminDashboard = ({
         category: bookForm.category,
         cover: bookForm.cover,
         description: { en: bookForm.descriptionEn, 'zh-HK': bookForm.descriptionZh },
+        storageLocation: bookForm.storageLocation,
         updatedAt: serverTimestamp()
       };
 
       if (editingBook) {
-        await updateDoc(doc(db, 'books', editingBook.id), bookData);
+        await updateDoc(doc(db, path, editingBook.id), bookData);
       } else {
-        const newDocRef = doc(collection(db, 'books'));
+        const newDocRef = doc(collection(db, path));
         await setDoc(newDocRef, {
           ...bookData,
           id: newDocRef.id,
@@ -190,50 +273,71 @@ export const AdminDashboard = ({
       }
       setIsBookModalOpen(false);
     } catch (error) {
-      console.error("Error saving book:", error);
-      alert("Failed to save book");
+      handleFirestoreError(error, editingBook ? OperationType.UPDATE : OperationType.CREATE, path);
     }
   };
 
   const handleDeleteBook = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this book?")) {
-      try {
-        await deleteDoc(doc(db, 'books', id));
-      } catch (error) {
-        console.error("Error deleting book:", error);
-        alert("Failed to delete book");
-      }
-    }
+    showConfirm(
+      "Delete Book",
+      "Are you sure you want to delete this book? This will remove it from the inventory.",
+      async () => {
+        const path = 'books';
+        try {
+          await deleteDoc(doc(db, path, id));
+          showToast("Book deleted successfully");
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, path);
+        }
+      },
+      'danger'
+    );
   };
 
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
   const handleToggleRole = async (userId: string, currentRole: string) => {
-    if (window.confirm(`Are you sure you want to change this user's role to ${currentRole === 'admin' ? 'user' : 'admin'}?`)) {
-      try {
-        await updateDoc(doc(db, 'users', userId), {
-          role: currentRole === 'admin' ? 'user' : 'admin'
-        });
-      } catch (error) {
-        console.error("Error updating user role:", error);
-        alert("Failed to update user role");
+    const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    showConfirm(
+      "Change User Role",
+      `Are you sure you want to change this user's role to ${newRole}?`,
+      async () => {
+        const path = 'users';
+        try {
+          await updateDoc(doc(db, path, userId), {
+            role: newRole
+          });
+          showToast(`User role updated to ${newRole}`);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.UPDATE, path);
+        }
       }
-    }
+    );
   };
 
   const handleUpdateReqStatus = async (reqId: string, newStatus: string, trackingStatus?: string) => {
+    const path = 'requests';
     try {
+      const req = requests.find((r: any) => r.id === reqId);
       const updateData: any = { status: newStatus };
-      if (trackingStatus) {
-        updateData.trackingStatus = trackingStatus;
+      
+      let finalTrackingStatus = trackingStatus;
+      
+      // If it's a borrow request with pickup method and it's being approved
+      if (newStatus === 'approved' && req?.type === 'borrow' && req?.deliveryMethod === 'pickup' && !trackingStatus) {
+        finalTrackingStatus = 'delivered';
       }
-      if (trackingStatus === 'delivered') {
+
+      if (finalTrackingStatus) {
+        updateData.trackingStatus = finalTrackingStatus;
+      }
+      if (finalTrackingStatus === 'delivered') {
         updateData.completedAt = new Date().toISOString();
       }
-      await updateDoc(doc(db, 'requests', reqId), updateData);
+      await updateDoc(doc(db, path, reqId), updateData);
+      showToast("Request updated successfully");
     } catch (error) {
-      console.error("Error updating request status:", error);
-      alert("Failed to update request status");
+      handleFirestoreError(error, OperationType.UPDATE, path);
     }
   };
 
@@ -332,7 +436,7 @@ export const AdminDashboard = ({
                         <td className="p-4">
                           <div className="flex items-center gap-2 text-sm text-slate-600">
                             <MapPin size={16} className="text-slate-400" />
-                            Aisle 04 / Shelf B-12
+                            {book.storageLocation || 'Unassigned'}
                           </div>
                         </td>
                         <td className="p-4 pr-6 text-right">
@@ -379,7 +483,7 @@ export const AdminDashboard = ({
                     <div className="flex items-center justify-between pt-2 border-t border-slate-50">
                       <div className="flex items-center gap-2 text-xs text-slate-600">
                         <MapPin size={14} className="text-slate-400" />
-                        Aisle 04 / Shelf B-12
+                        {book.storageLocation || 'Unassigned'}
                       </div>
                       <div className="flex items-center gap-2">
                         <button 
@@ -552,7 +656,10 @@ export const AdminDashboard = ({
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-              <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <button 
+                onClick={() => setActiveMenu('inventory')}
+                className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between text-left hover:border-blue-300 hover:shadow-md transition-all active:scale-95"
+              >
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-2 md:p-3 bg-blue-50 text-blue-600 rounded-xl">
                     <BookOpen size={20} className="md:w-6 md:h-6" />
@@ -562,9 +669,12 @@ export const AdminDashboard = ({
                   <p className="text-2xl md:text-3xl font-bold text-slate-900">{books.length}</p>
                   <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">Total Books</p>
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <button 
+                onClick={() => setActiveMenu('users')}
+                className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between text-left hover:border-emerald-300 hover:shadow-md transition-all active:scale-95"
+              >
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-2 md:p-3 bg-emerald-50 text-emerald-600 rounded-xl">
                     <Users size={20} className="md:w-6 md:h-6" />
@@ -574,9 +684,12 @@ export const AdminDashboard = ({
                   <p className="text-2xl md:text-3xl font-bold text-slate-900">{users.length}</p>
                   <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">Total Members</p>
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <button 
+                onClick={() => setActiveMenu('circulation')}
+                className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between text-left hover:border-amber-300 hover:shadow-md transition-all active:scale-95"
+              >
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-2 md:p-3 bg-amber-50 text-amber-600 rounded-xl">
                     <AlertCircle size={20} className="md:w-6 md:h-6" />
@@ -588,9 +701,12 @@ export const AdminDashboard = ({
                   </p>
                   <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">Pending Requests</p>
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <button 
+                onClick={() => setActiveMenu('circulation')}
+                className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between text-left hover:border-purple-300 hover:shadow-md transition-all active:scale-95"
+              >
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-2 md:p-3 bg-purple-50 text-purple-600 rounded-xl">
                     <Clock size={20} className="md:w-6 md:h-6" />
@@ -602,26 +718,46 @@ export const AdminDashboard = ({
                   </p>
                   <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">Active Borrows</p>
                 </div>
-              </div>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Recent Activity</h3>
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-bold text-slate-900">Recent Activity</h3>
+                  <button 
+                    onClick={() => setActiveMenu('circulation')}
+                    className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    View All
+                  </button>
+                </div>
                 <div className="space-y-4">
                   {requests?.slice(0, 5).map((req: any) => (
-                    <div key={req.id} className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl transition-colors">
-                      <div className={`w-2 h-2 rounded-full ${req.status === 'pending' ? 'bg-amber-500' : req.status === 'approved' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-900">
+                    <button 
+                      key={req.id} 
+                      onClick={() => {
+                        setActiveMenu('circulation');
+                        setSearchQuery(req.bookName || '');
+                      }}
+                      className="w-full flex items-center gap-4 p-3 hover:bg-blue-50 rounded-xl transition-colors text-left group"
+                    >
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${req.status === 'pending' ? 'bg-amber-500' : req.status === 'approved' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
                           {req.type === 'borrow' ? 'Borrow Request' : req.type === 'return' ? 'Return Request' : 'Renewal Request'}
                         </p>
-                        <p className="text-xs text-slate-500">{new Date(req.date).toLocaleDateString()}</p>
+                        <p className="text-xs text-slate-500 truncate">
+                          {req.bookName} • {new Date(req.date).toLocaleDateString()}
+                        </p>
                       </div>
-                      <span className="text-xs font-medium px-2 py-1 bg-slate-100 rounded-md uppercase tracking-wider text-slate-600">
-                        {req.status}
-                      </span>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded-md uppercase tracking-wider text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                          {req.status}
+                        </span>
+                        <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-400 transition-colors" />
+                      </div>
+                    </button>
                   ))}
                   {(!requests || requests.length === 0) && (
                     <p className="text-sm text-slate-500 text-center py-4">No recent activity.</p>
@@ -908,11 +1044,11 @@ export const AdminDashboard = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Library Name</label>
-                    <input type="text" defaultValue="The Curated Archive" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                    <input type="text" defaultValue="HKMU" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Contact Email</label>
-                    <input type="email" defaultValue="admin@curatedarchive.com" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                    <input type="email" defaultValue="admin@hkmu.edu.hk" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
                   </div>
                 </div>
 
@@ -949,7 +1085,7 @@ export const AdminDashboard = ({
                 <button className="px-6 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-colors">
                   Discard Changes
                 </button>
-                <button className="px-6 py-2 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200" onClick={() => alert('Settings saved successfully!')}>
+                <button className="px-6 py-2 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200" onClick={() => showToast('Settings saved successfully!')}>
                   Save Settings
                 </button>
               </div>
@@ -1037,7 +1173,7 @@ export const AdminDashboard = ({
       {/* Sidebar */}
       <div className="hidden md:flex w-64 bg-slate-50 border-r border-slate-200 flex-col">
         <div className="p-6">
-          <h1 className="text-xl font-bold text-blue-600">Archive Admin</h1>
+          <h1 className="text-xl font-bold text-blue-600">Admin</h1>
           <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">System Controller</p>
         </div>
 
@@ -1209,6 +1345,10 @@ export const AdminDashboard = ({
                       <label className="block text-sm font-medium text-slate-700 mb-1">Cover Image URL</label>
                       <input type="url" value={bookForm.cover} onChange={e => setBookForm({...bookForm, cover: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" placeholder="https://..." />
                     </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Storage Location</label>
+                      <input type="text" value={bookForm.storageLocation} onChange={e => setBookForm({...bookForm, storageLocation: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" placeholder="e.g. Aisle 04 / Shelf B-12" />
+                    </div>
                   </div>
                 </form>
               </div>
@@ -1314,6 +1454,27 @@ export const AdminDashboard = ({
             </motion.div>
           </div>
         )}
+        <AnimatePresence>
+          {toast && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={() => setToast(null)}
+            />
+          )}
+        </AnimatePresence>
+
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          type={confirmDialog.type}
+          onConfirm={() => {
+            confirmDialog.onConfirm();
+            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          }}
+          onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        />
       </AnimatePresence>
     </div>
   );
