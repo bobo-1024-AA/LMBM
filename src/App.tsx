@@ -751,7 +751,7 @@ const HomeView = ({
           {filteredBooks.length > 0 ? (
             filteredBooks.map((book) => (
               <div 
-                key={book.id} 
+                key={`home-${book.id}`} 
                 className="flex-shrink-0 w-40 cursor-pointer active:scale-95 transition-transform"
                 onClick={() => onBookClick(book)}
               >
@@ -958,7 +958,7 @@ const LibraryView = ({
         {filteredBooks.length > 0 ? (
           filteredBooks.map((book) => (
             <div 
-              key={book.id} 
+              key={`library-${book.id}`} 
               className="flex gap-4 p-4 bg-white rounded-2xl shadow-sm border border-slate-100 cursor-pointer active:scale-[0.98] transition-all"
               onClick={() => onBookClick(book)}
             >
@@ -1078,7 +1078,7 @@ const BulletinView = ({
           <div className="space-y-6">
             {events.map((event) => (
               <div 
-                key={event.id} 
+                key={`event-${event.id}`} 
                 onClick={() => setSelectedEvent(event)}
                 className="bg-white rounded-3xl overflow-hidden shadow-md border border-slate-100 active:scale-[0.98] transition-all cursor-pointer"
               >
@@ -1134,7 +1134,7 @@ const BulletinView = ({
             {notifications.length > 0 ? (
               notifications.map((notif) => (
                 <div 
-                  key={notif.id}
+                  key={`notif-${notif.id}`}
                   onClick={() => markAsRead(notif.id)}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] ${
                     notif.isRead ? 'bg-white border-slate-100' : 'bg-blue-50/50 border-blue-100 ring-1 ring-blue-100'
@@ -1680,7 +1680,7 @@ const ProfileView = ({
           {activeStatModal === 'borrowed' && (
             borrowedBooks.length > 0 ? (
               borrowedBooks.map(book => (
-                <div key={book.id} className="flex gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                <div key={`stat-borrowed-${book.id}`} className="flex gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
                   <img src={book.cover} className="w-12 h-16 object-cover rounded-lg shadow-sm" referrerPolicy="no-referrer" />
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-slate-900 truncate">{renderTranslatable(book.title, language)}</h4>
@@ -1715,7 +1715,7 @@ const ProfileView = ({
           {activeStatModal === 'returned' && (
             returnedActivities.length > 0 ? (
               returnedActivities.map(activity => (
-                <div key={activity.id} className="flex gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                <div key={`stat-returned-${activity.id}`} className="flex gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
                   <div className="w-12 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
                     <History size={24} />
                   </div>
@@ -1734,7 +1734,7 @@ const ProfileView = ({
           {activeStatModal === 'overdue' && (
             overdueBooks.length > 0 ? (
               overdueBooks.map(book => (
-                <div key={book.id} className="flex gap-4 p-3 rounded-2xl bg-red-50 border border-red-100">
+                <div key={`stat-overdue-${book.id}`} className="flex gap-4 p-3 rounded-2xl bg-red-50 border border-red-100">
                   <img src={book.cover} className="w-12 h-16 object-cover rounded-lg shadow-sm" referrerPolicy="no-referrer" />
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-red-900 truncate">{renderTranslatable(book.title, language)}</h4>
@@ -2791,7 +2791,7 @@ export default function App() {
                     {borrowedBooks.length > 0 ? (
                       borrowedBooks.map((book) => (
                         <button
-                          key={book.id}
+                          key={`borrow-modal-${book.id}`}
                           onClick={() => setBookName(renderTranslatable(book.title, language))}
                           className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all ${
                             bookName === renderTranslatable(book.title, language) 

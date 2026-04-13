@@ -407,7 +407,7 @@ export const AdminDashboard = ({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredBooks.map((book: any) => (
-                      <tr key={book.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={`desktop-${book.id}`} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="p-4 pl-6">
                           <div className="flex items-center gap-4">
                             <img src={book.cover || 'https://via.placeholder.com/40x60'} alt="" className="w-10 h-14 object-cover rounded shadow-sm" />
@@ -464,7 +464,7 @@ export const AdminDashboard = ({
               {/* Mobile Inventory Cards */}
               <div className="md:hidden divide-y divide-slate-100">
                 {filteredBooks.map((book: any) => (
-                  <div key={book.id} className="p-4 space-y-4">
+                  <div key={`mobile-${book.id}`} className="p-4 space-y-4">
                     <div className="flex gap-4">
                       <img src={book.cover || 'https://via.placeholder.com/40x60'} alt="" className="w-16 h-24 object-cover rounded shadow-sm shrink-0" />
                       <div className="flex-1 min-w-0">
@@ -548,7 +548,7 @@ export const AdminDashboard = ({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredUsers.map((user: any) => (
-                      <tr key={user.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={`desktop-${user.id}`} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="p-4 pl-6">
                           <div className="flex items-center gap-4">
                             {user.avatar ? (
@@ -602,7 +602,7 @@ export const AdminDashboard = ({
               {/* Mobile Users Cards */}
               <div className="md:hidden divide-y divide-slate-100">
                 {filteredUsers.map((user: any) => (
-                  <div key={user.id} className="p-4 space-y-4">
+                  <div key={`mobile-${user.id}`} className="p-4 space-y-4">
                     <div className="flex items-center gap-4">
                       {user.avatar ? (
                         <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-full object-cover shadow-sm shrink-0" />
@@ -785,6 +785,7 @@ export const AdminDashboard = ({
                       <th className="p-4 pl-6">Request Type</th>
                       <th className="p-4">Book Details</th>
                       <th className="p-4">User</th>
+                      <th className="p-4">Method</th>
                       <th className="p-4">Date</th>
                       <th className="p-4">Status</th>
                       <th className="p-4 pr-6 text-right">Actions</th>
@@ -792,7 +793,7 @@ export const AdminDashboard = ({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredRequests?.map((req: any) => (
-                      <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
+                      <tr key={`desktop-${req.id}`} className="hover:bg-slate-50/50 transition-colors">
                         <td className="p-4 pl-6">
                           <div className="flex items-center gap-3">
                             <div className={`p-2 rounded-lg ${
@@ -813,6 +814,13 @@ export const AdminDashboard = ({
                         </td>
                         <td className="p-4">
                           <p className="text-sm font-medium text-slate-900">{req.userName || 'Unknown User'}</p>
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider ${
+                            req.deliveryMethod === 'pickup' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'
+                          }`}>
+                            {req.deliveryMethod || 'delivery'}
+                          </span>
                         </td>
                         <td className="p-4">
                           <p className="text-sm text-slate-600">{new Date(req.date).toLocaleDateString()}</p>
@@ -879,7 +887,7 @@ export const AdminDashboard = ({
               {/* Mobile Circulation Cards */}
               <div className="md:hidden divide-y divide-slate-100">
                 {filteredRequests?.map((req: any) => (
-                  <div key={req.id} className="p-4 space-y-3">
+                  <div key={`mobile-${req.id}`} className="p-4 space-y-3">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-lg ${
@@ -906,7 +914,14 @@ export const AdminDashboard = ({
                     </div>
                     <div className="bg-slate-50 p-3 rounded-xl">
                       <p className="text-sm font-bold text-slate-900 truncate">{req.bookName || 'Unknown Book'}</p>
-                      <p className="text-xs text-slate-500 mt-1">By: {req.userName || 'Unknown User'}</p>
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-slate-500">By: {req.userName || 'Unknown User'}</p>
+                        <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider ${
+                          req.deliveryMethod === 'pickup' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {req.deliveryMethod || 'delivery'}
+                        </span>
+                      </div>
                     </div>
                     {req.status === 'pending' ? (
                       <div className="flex gap-2 pt-2">
@@ -971,7 +986,7 @@ export const AdminDashboard = ({
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Most Popular Books</h3>
                 <div className="space-y-4">
                   {books.slice(0, 3).map((book: any, idx: number) => (
-                    <div key={book.id} className="flex items-center gap-4">
+                    <div key={`popular-${book.id}`} className="flex items-center gap-4">
                       <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 shrink-0">
                         {idx + 1}
                       </div>
@@ -988,7 +1003,7 @@ export const AdminDashboard = ({
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Active Users</h3>
                 <div className="space-y-4">
                   {users.slice(0, 3).map((user: any, idx: number) => (
-                    <div key={user.id} className="flex items-center gap-4">
+                    <div key={`active-${user.id}`} className="flex items-center gap-4">
                       {user.avatar ? (
                         <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
                       ) : (
