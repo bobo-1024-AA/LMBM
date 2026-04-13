@@ -4,7 +4,7 @@ import {
   BookOpen, Users, LayoutDashboard, Settings, 
   LogOut, Plus, Edit2, Trash2, Search, Bell, 
   Filter, ChevronLeft, ChevronRight, CheckCircle2,
-  AlertCircle, Clock, MapPin, Download, FileText
+  AlertCircle, Clock, MapPin, Download, FileText, Calendar
 } from 'lucide-react';
 import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
@@ -18,25 +18,41 @@ export const AdminDashboard = ({
   t,
   language
 }: any) => {
-  const [activeMenu, setActiveMenu] = useState('inventory');
+  const [activeMenu, setActiveMenu] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
 
   useEffect(() => {
     const q = query(collection(db, 'users'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedUsers: any[] = [];
       snapshot.forEach(doc => {
-        fetchedUsers.push(doc.data());
+        fetchedUsers.push({ id: doc.id, ...doc.data() });
       });
       setUsers(fetchedUsers);
     });
-    return () => unsubscribe();
+
+    const eventsQ = query(collection(db, 'events'));
+    const unsubscribeEvents = onSnapshot(eventsQ, (snapshot) => {
+      const fetchedEvents: any[] = [];
+      snapshot.forEach(doc => {
+        fetchedEvents.push({ id: doc.id, ...doc.data() });
+      });
+      setEvents(fetchedEvents);
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeEvents();
+    };
   }, []);
   
   // Book CRUD state
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<any>(null);
+  const [editingEvent, setEditingEvent] = useState<any>(null);
   const [bookForm, setBookForm] = useState({
     titleEn: '',
     titleZh: '',
@@ -47,6 +63,85 @@ export const AdminDashboard = ({
     descriptionEn: '',
     descriptionZh: ''
   });
+
+  const [eventForm, setEventForm] = useState({
+    titleEn: '',
+    titleZh: '',
+    date: '',
+    time: '',
+    locationEn: '',
+    locationZh: '',
+    category: 'eventWorkshop',
+    image: ''
+  });
+
+  const handleOpenEventModal = (event: any = null) => {
+    if (event) {
+      setEditingEvent(event);
+      setEventForm({
+        titleEn: event.title?.en || '',
+        titleZh: event.title?.zh || '',
+        date: event.date || '',
+        time: event.time || '',
+        locationEn: event.location?.en || '',
+        locationZh: event.location?.zh || '',
+        category: event.category || 'eventWorkshop',
+        image: event.image || ''
+      });
+    } else {
+      setEditingEvent(null);
+      setEventForm({
+        titleEn: '',
+        titleZh: '',
+        date: '',
+        time: '',
+        locationEn: '',
+        locationZh: '',
+        category: 'eventWorkshop',
+        image: ''
+      });
+    }
+    setIsEventModalOpen(true);
+  };
+
+  const handleSaveEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const eventData = {
+        title: { en: eventForm.titleEn, zh: eventForm.titleZh },
+        date: eventForm.date,
+        time: eventForm.time,
+        location: { en: eventForm.locationEn, zh: eventForm.locationZh },
+        category: eventForm.category,
+        image: eventForm.image,
+        updatedAt: serverTimestamp()
+      };
+
+      if (editingEvent) {
+        await updateDoc(doc(db, 'events', editingEvent.id), eventData);
+      } else {
+        await addDoc(collection(db, 'events'), {
+          ...eventData,
+          createdAt: serverTimestamp()
+        });
+      }
+      setIsEventModalOpen(false);
+    } catch (error) {
+      console.error("Error saving event:", error);
+      alert("Failed to save event");
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (window.confirm('Are you sure you want to delete this event?')) {
+      try {
+        await deleteDoc(doc(db, 'events', eventId));
+      } catch (error) {
+        console.error("Error deleting event:", error);
+        alert("Failed to delete event");
+      }
+    }
+  };
 
   const handleOpenBookModal = (book?: any) => {
     if (book) {
@@ -126,6 +221,37 @@ export const AdminDashboard = ({
     }
   };
 
+  const handleUpdateReqStatus = async (reqId: string, newStatus: string, trackingStatus?: string) => {
+    try {
+      const updateData: any = { status: newStatus };
+      if (trackingStatus) {
+        updateData.trackingStatus = trackingStatus;
+      }
+      if (trackingStatus === 'delivered') {
+        updateData.completedAt = new Date().toISOString();
+      }
+      await updateDoc(doc(db, 'requests', reqId), updateData);
+    } catch (error) {
+      console.error("Error updating request status:", error);
+      alert("Failed to update request status");
+    }
+  };
+
+  const filteredBooks = books.filter((book: any) => 
+    (book.title?.en || book.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (book.author?.en || book.author || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredUsers = users.filter((user: any) => 
+    (user.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredRequests = requests?.filter((req: any) => 
+    (req.bookName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (req.userName || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const renderContent = () => {
     switch (activeMenu) {
       case 'inventory':
@@ -176,7 +302,7 @@ export const AdminDashboard = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {books.map((book: any) => (
+                    {filteredBooks.map((book: any) => (
                       <tr key={book.id} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="p-4 pl-6">
                           <div className="flex items-center gap-4">
@@ -233,7 +359,7 @@ export const AdminDashboard = ({
 
               {/* Mobile Inventory Cards */}
               <div className="md:hidden divide-y divide-slate-100">
-                {books.map((book: any) => (
+                {filteredBooks.map((book: any) => (
                   <div key={book.id} className="p-4 space-y-4">
                     <div className="flex gap-4">
                       <img src={book.cover || 'https://via.placeholder.com/40x60'} alt="" className="w-16 h-24 object-cover rounded shadow-sm shrink-0" />
@@ -506,7 +632,397 @@ export const AdminDashboard = ({
           </div>
         );
       case 'circulation':
+        return (
+          <div className="p-4 md:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">Circulation Management</h2>
+                <p className="text-slate-500 mt-1 text-sm md:text-base">Review and process book borrow, return, and renewal requests.</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider bg-slate-50/50">
+                      <th className="p-4 pl-6">Request Type</th>
+                      <th className="p-4">Book Details</th>
+                      <th className="p-4">User</th>
+                      <th className="p-4">Date</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 pr-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredRequests?.map((req: any) => (
+                      <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="p-4 pl-6">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${
+                              req.type === 'borrow' ? 'bg-blue-50 text-blue-600' :
+                              req.type === 'return' ? 'bg-emerald-50 text-emerald-600' :
+                              'bg-purple-50 text-purple-600'
+                            }`}>
+                              {req.type === 'borrow' ? <BookOpen size={16} /> :
+                               req.type === 'return' ? <CheckCircle2 size={16} /> :
+                               <Clock size={16} />}
+                            </div>
+                            <span className="font-medium text-slate-900 capitalize">{req.type}</span>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-sm font-bold text-slate-900">{req.bookName || 'Unknown Book'}</p>
+                          <p className="text-xs text-slate-500 font-mono mt-0.5">ID: {req.bookId?.slice(0, 8)}</p>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-sm font-medium text-slate-900">{req.userName || 'Unknown User'}</p>
+                        </td>
+                        <td className="p-4">
+                          <p className="text-sm text-slate-600">{new Date(req.date).toLocaleDateString()}</p>
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2.5 py-1 text-xs font-bold rounded-full uppercase tracking-wider ${
+                            req.status === 'pending' ? 'bg-amber-50 text-amber-600' :
+                            req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
+                            'bg-red-50 text-red-600'
+                          }`}>
+                            {req.status}
+                          </span>
+                        </td>
+                        <td className="p-4 pr-6 text-right">
+                          {req.status === 'pending' ? (
+                            <div className="flex items-center justify-end gap-2">
+                              <button 
+                                onClick={() => handleUpdateReqStatus(req.id, 'approved', req.type === 'borrow' ? 'processing' : undefined)}
+                                className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors"
+                              >
+                                Approve
+                              </button>
+                              <button 
+                                onClick={() => handleUpdateReqStatus(req.id, 'rejected')}
+                                className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-colors"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          ) : req.status === 'approved' && req.type === 'borrow' && req.trackingStatus !== 'delivered' ? (
+                            <div className="flex items-center justify-end gap-2">
+                              {req.trackingStatus === 'processing' && (
+                                <button 
+                                  onClick={() => handleUpdateReqStatus(req.id, 'approved', 'shipped')}
+                                  className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  Mark as Sent
+                                </button>
+                              )}
+                              {req.trackingStatus === 'shipped' && (
+                                <button 
+                                  onClick={() => handleUpdateReqStatus(req.id, 'approved', 'delivered')}
+                                  className="px-3 py-1.5 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  Mark as Delivered
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-medium">Processed</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {(!requests || requests.length === 0) && (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-slate-500">No circulation requests found.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Circulation Cards */}
+              <div className="md:hidden divide-y divide-slate-100">
+                {filteredRequests?.map((req: any) => (
+                  <div key={req.id} className="p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${
+                          req.type === 'borrow' ? 'bg-blue-50 text-blue-600' :
+                          req.type === 'return' ? 'bg-emerald-50 text-emerald-600' :
+                          'bg-purple-50 text-purple-600'
+                        }`}>
+                          {req.type === 'borrow' ? <BookOpen size={16} /> :
+                           req.type === 'return' ? <CheckCircle2 size={16} /> :
+                           <Clock size={16} />}
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-900 capitalize block">{req.type}</span>
+                          <span className="text-xs text-slate-500">{new Date(req.date).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider ${
+                        req.status === 'pending' ? 'bg-amber-50 text-amber-600' :
+                        req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
+                        'bg-red-50 text-red-600'
+                      }`}>
+                        {req.status}
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl">
+                      <p className="text-sm font-bold text-slate-900 truncate">{req.bookName || 'Unknown Book'}</p>
+                      <p className="text-xs text-slate-500 mt-1">By: {req.userName || 'Unknown User'}</p>
+                    </div>
+                    {req.status === 'pending' ? (
+                      <div className="flex gap-2 pt-2">
+                        <button 
+                          onClick={() => handleUpdateReqStatus(req.id, 'approved', req.type === 'borrow' ? 'processing' : undefined)}
+                          className="flex-1 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-xl text-sm font-bold transition-colors"
+                        >
+                          Approve
+                        </button>
+                        <button 
+                          onClick={() => handleUpdateReqStatus(req.id, 'rejected')}
+                          className="flex-1 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm font-bold transition-colors"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : req.status === 'approved' && req.type === 'borrow' && req.trackingStatus !== 'delivered' ? (
+                      <div className="flex gap-2 pt-2">
+                        {req.trackingStatus === 'processing' && (
+                          <button 
+                            onClick={() => handleUpdateReqStatus(req.id, 'approved', 'shipped')}
+                            className="flex-1 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl text-sm font-bold transition-colors"
+                          >
+                            Mark as Sent
+                          </button>
+                        )}
+                        {req.trackingStatus === 'shipped' && (
+                          <button 
+                            onClick={() => handleUpdateReqStatus(req.id, 'approved', 'delivered')}
+                            className="flex-1 py-2 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-xl text-sm font-bold transition-colors"
+                          >
+                            Mark as Delivered
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {(!requests || requests.length === 0) && (
+                  <div className="p-8 text-center text-slate-500">No circulation requests found.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
       case 'reports':
+        return (
+          <div className="p-4 md:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">Reports & Analytics</h2>
+                <p className="text-slate-500 mt-1 text-sm md:text-base">Library usage statistics and insights.</p>
+              </div>
+              <button className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl font-medium flex items-center gap-2 transition-colors text-sm">
+                <Download size={16} />
+                Export Data
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Most Popular Books</h3>
+                <div className="space-y-4">
+                  {books.slice(0, 3).map((book: any, idx: number) => (
+                    <div key={book.id} className="flex items-center gap-4">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 shrink-0">
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{book.title?.en || book.title}</p>
+                        <p className="text-xs text-slate-500 truncate">{book.author?.en || book.author}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Active Users</h3>
+                <div className="space-y-4">
+                  {users.slice(0, 3).map((user: any, idx: number) => (
+                    <div key={user.id} className="flex items-center gap-4">
+                      {user.avatar ? (
+                        <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
+                          {user.name?.charAt(0) || 'U'}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{user.name}</p>
+                        <p className="text-xs text-slate-500">{user.borrowedBooks?.length || 0} borrows</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">System Health</h3>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Database Status</span>
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">Online</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Storage Used</span>
+                    <span className="text-sm font-medium text-slate-900">45%</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-600 rounded-full" style={{ width: '45%' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      case 'settings':
+        return (
+          <div className="p-4 md:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">System Settings</h2>
+                <p className="text-slate-500 mt-1 text-sm md:text-base">Configure library rules and system preferences.</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm max-w-3xl">
+              <div className="p-6 border-b border-slate-100">
+                <h3 className="text-lg font-bold text-slate-900">General Configuration</h3>
+                <p className="text-sm text-slate-500 mt-1">Update your library's core settings.</p>
+              </div>
+              
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Library Name</label>
+                    <input type="text" defaultValue="The Curated Archive" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Contact Email</label>
+                    <input type="email" defaultValue="admin@curatedarchive.com" className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-6">
+                  <h4 className="text-sm font-bold text-slate-900 mb-4">Circulation Rules</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Max Borrow Limit (Books)</label>
+                      <input type="number" defaultValue={5} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Standard Loan Period (Days)</label>
+                      <input type="number" defaultValue={14} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-6">
+                  <h4 className="text-sm font-bold text-slate-900 mb-4">Notifications</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" defaultChecked className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
+                      <span className="text-sm text-slate-700">Email alerts for new borrow requests</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" defaultChecked className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
+                      <span className="text-sm text-slate-700">Daily summary of overdue items</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 rounded-b-2xl">
+                <button className="px-6 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-colors">
+                  Discard Changes
+                </button>
+                <button className="px-6 py-2 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200" onClick={() => alert('Settings saved successfully!')}>
+                  Save Settings
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      case 'events':
+        return (
+          <div className="p-4 md:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">Library Events</h2>
+                <p className="text-slate-500 mt-1 text-sm md:text-base">Manage workshops, readings, and community events.</p>
+              </div>
+              <button 
+                onClick={() => handleOpenEventModal()}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-colors"
+              >
+                <Plus size={20} />
+                Add New Event
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {events.map((event: any) => (
+                <div key={event.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group">
+                  <div className="h-40 relative">
+                    <img src={event.image || 'https://via.placeholder.com/400x200'} alt="" className="w-full h-full object-cover" />
+                    <div className="absolute top-4 right-4 px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-xs font-bold text-blue-500">
+                      {event.category}
+                    </div>
+                  </div>
+                  <div className="p-5">
+                    <h3 className="text-lg font-bold text-slate-900 mb-2 truncate">{event.title?.en || event.title}</h3>
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center gap-2 text-slate-500 text-xs">
+                        <Calendar size={14} className="text-blue-500" />
+                        <span>{event.date}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-500 text-xs">
+                        <Clock size={14} className="text-blue-500" />
+                        <span>{event.time}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-500 text-xs">
+                        <MapPin size={14} className="text-blue-500" />
+                        <span className="truncate">{event.location?.en || event.location}</span>
+                      </div>
+                    </div>
+                    <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">
+                      <button 
+                        onClick={() => handleOpenEventModal(event)}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteEvent(event.id)}
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {events.length === 0 && (
+                <div className="col-span-full p-12 text-center text-slate-500 bg-white rounded-2xl border border-slate-200 border-dashed">
+                  No events found. Click "Add New Event" to create one.
+                </div>
+              )}
+            </div>
+          </div>
+        );
       default:
         return (
           <div className="p-8 flex items-center justify-center h-full text-slate-400">
@@ -519,7 +1035,7 @@ export const AdminDashboard = ({
   return (
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col">
+      <div className="hidden md:flex w-64 bg-slate-50 border-r border-slate-200 flex-col">
         <div className="p-6">
           <h1 className="text-xl font-bold text-blue-600">Archive Admin</h1>
           <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">System Controller</p>
@@ -531,6 +1047,7 @@ export const AdminDashboard = ({
             { id: 'inventory', icon: BookOpen, label: 'Book Inventory' },
             { id: 'users', icon: Users, label: 'User Management' },
             { id: 'circulation', icon: Clock, label: 'Circulation' },
+            { id: 'events', icon: Calendar, label: 'Library Events' },
             { id: 'reports', icon: FileText, label: 'Reports & Analytics' },
             { id: 'settings', icon: Settings, label: 'Settings' },
           ].map(item => (
@@ -569,13 +1086,15 @@ export const AdminDashboard = ({
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
-          <h2 className="text-lg font-bold text-slate-900">The Curated Archive</h2>
+          <h2 className="text-lg font-bold text-slate-900">HKMU</h2>
           <div className="flex items-center gap-6">
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
                 type="text" 
                 placeholder="Search the archive..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-full text-sm w-64 focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
@@ -590,6 +1109,27 @@ export const AdminDashboard = ({
         <main className="flex-1 overflow-y-auto">
           {renderContent()}
         </main>
+
+        {/* Mobile Bottom Nav */}
+        <nav className="md:hidden bg-white border-t border-slate-200 flex items-center justify-around p-3 pb-safe">
+          {[
+            { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
+            { id: 'inventory', icon: BookOpen, label: 'Books' },
+            { id: 'users', icon: Users, label: 'Users' },
+            { id: 'circulation', icon: Clock, label: 'Circ' },
+          ].map(item => (
+            <button 
+              key={item.id}
+              onClick={() => setActiveMenu(item.id)}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${
+                activeMenu === item.id ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              <item.icon size={20} />
+              <span className="text-[10px] font-medium">{item.label}</span>
+            </button>
+          ))}
+        </nav>
       </div>
 
       {/* Book Modal */}
@@ -679,6 +1219,96 @@ export const AdminDashboard = ({
                 </button>
                 <button type="submit" form="book-form" className="px-6 py-2 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
                   Save Book
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Event Modal */}
+      <AnimatePresence>
+        {isEventModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+              onClick={() => setIsEventModalOpen(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 className="text-xl font-bold text-slate-900">
+                  {editingEvent ? 'Edit Event' : 'Add New Event'}
+                </h3>
+                <button onClick={() => setIsEventModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  Close
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto flex-1">
+                <form id="event-form" onSubmit={handleSaveEvent} className="space-y-6">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">English Details</h4>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Title (EN)</label>
+                        <input required type="text" value={eventForm.titleEn} onChange={e => setEventForm({...eventForm, titleEn: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Location (EN)</label>
+                        <input required type="text" value={eventForm.locationEn} onChange={e => setEventForm({...eventForm, locationEn: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Chinese Details</h4>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Title (ZH)</label>
+                        <input required type="text" value={eventForm.titleZh} onChange={e => setEventForm({...eventForm, titleZh: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Location (ZH)</label>
+                        <input required type="text" value={eventForm.locationZh} onChange={e => setEventForm({...eventForm, locationZh: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-6 grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                      <input required type="text" value={eventForm.date} onChange={e => setEventForm({...eventForm, date: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" placeholder="e.g. 15 Oct 2026" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Time</label>
+                      <input required type="text" value={eventForm.time} onChange={e => setEventForm({...eventForm, time: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" placeholder="e.g. 14:00 - 16:00" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                      <select value={eventForm.category} onChange={e => setEventForm({...eventForm, category: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none">
+                        <option value="eventWorkshop">Workshop</option>
+                        <option value="eventReading">Reading</option>
+                        <option value="eventExhibition">Exhibition</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Image URL</label>
+                      <input type="url" value={eventForm.image} onChange={e => setEventForm({...eventForm, image: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" placeholder="https://..." />
+                    </div>
+                  </div>
+                </form>
+              </div>
+              
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                <button type="button" onClick={() => setIsEventModalOpen(false)} className="px-6 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" form="event-form" className="px-6 py-2 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
+                  Save Event
                 </button>
               </div>
             </motion.div>

@@ -1017,11 +1017,13 @@ const LibraryView = ({
 const BulletinView = ({ 
   notifications, 
   setNotifications,
+  events,
   t,
   language
 }: { 
   notifications: Notification[], 
   setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>,
+  events: any[],
   t: any,
   language: Language,
   key?: string
@@ -1072,20 +1074,20 @@ const BulletinView = ({
       <div className="p-6">
         {activeTab === 'news' ? (
           <div className="space-y-6">
-            {EVENTS_DATA.map((event) => (
+            {events.map((event) => (
               <div 
                 key={event.id} 
                 onClick={() => setSelectedEvent(event)}
                 className="bg-white rounded-3xl overflow-hidden shadow-md border border-slate-100 active:scale-[0.98] transition-all cursor-pointer"
               >
                 <div className="h-40 w-full relative">
-                  <img src={event.image} alt={event.title[language]} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={event.image || 'https://via.placeholder.com/400x200'} alt={event.title?.en || event.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   <div className="absolute top-4 right-4 px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-xs font-bold text-blue-500">
                     {t[event.category as keyof typeof t] || event.category}
                   </div>
                 </div>
                 <div className="p-5">
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">{event.title[language]}</h3>
+                  <h3 className="text-lg font-bold text-slate-900 mb-2">{event.title?.[language] || event.title?.en || event.title}</h3>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-slate-500 text-xs">
                       <Calendar size={14} className="text-blue-500" />
@@ -1097,7 +1099,7 @@ const BulletinView = ({
                     </div>
                     <div className="flex items-center gap-2 text-slate-500 text-xs">
                       <MapPin size={14} className="text-blue-500" />
-                      <span>{event.location[language]}</span>
+                      <span>{event.location?.[language] || event.location?.en || event.location}</span>
                     </div>
                   </div>
                   <div className="mt-4 flex items-center justify-between text-blue-500 font-bold text-xs">
@@ -1107,6 +1109,11 @@ const BulletinView = ({
                 </div>
               </div>
             ))}
+            {events.length === 0 && (
+              <div className="py-20 text-center text-slate-400 italic text-sm">
+                No events found.
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -2284,6 +2291,7 @@ export default function App() {
   const [pendingRequests, setPendingRequests] = useState<Request[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [books, setBooks] = useState<Book[]>(ALL_BOOKS);
+  const [events, setEvents] = useState<any[]>([]);
   const [addresses, setAddresses] = useState<ShippingAddress[]>([
     { id: '1', recipientName: t.userName, phoneNumber: '123-456-7890', detailedAddress: '123 Library St, Booktown, BK 12345', isDefault: true },
   ]);
@@ -2427,9 +2435,22 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, `users/${auth.currentUser.uid}/addresses`);
     });
 
+    const eventsQuery = query(collection(db, 'events'));
+    const unsubscribeEvents = onSnapshot(eventsQuery, (snapshot) => {
+      const fetchedEvents: any[] = [];
+      snapshot.forEach(doc => {
+        fetchedEvents.push({ id: doc.id, ...doc.data() });
+      });
+      setEvents(fetchedEvents.length > 0 ? fetchedEvents : EVENTS_DATA);
+    }, (error: any) => {
+      console.warn("Ignoring events snapshot error:", error);
+      setEvents(EVENTS_DATA);
+    });
+
     return () => {
       unsubscribeRequests();
       unsubscribeAddresses();
+      unsubscribeEvents();
     };
   }, [isAuthReady, isLoggedIn, userRole]);
 
@@ -2582,6 +2603,7 @@ export default function App() {
             key="bulletin" 
             notifications={notifications}
             setNotifications={setNotifications}
+            events={events}
             t={t}
             language={language}
           />
