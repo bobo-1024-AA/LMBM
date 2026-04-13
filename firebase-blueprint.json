@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A library user or administrator.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "name": { "type": "string" },
+        "avatar": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "borrowedBooks": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "memberId", "name", "email", "role"]
+    },
+    "Book": {
+      "title": "Book",
+      "description": "A book in the library collection.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "object" },
+        "author": { "type": "object" },
+        "cover": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "author", "category"]
+    },
+    "Request": {
+      "title": "Request",
+      "description": "A user request to borrow, return, or renew a book.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "bookId": { "type": "string" },
+        "bookTitle": { "type": "object" },
+        "type": { "type": "string", "enum": ["borrow", "return", "renew"] },
+        "date": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "days": { "type": "number" },
+        "trackingStatus": { "type": "string" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userName", "bookId", "bookTitle", "type", "date", "status"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "A library event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "object" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "location": { "type": "object" },
+        "image": { "type": "string" },
+        "category": { "type": "string" },
+        "agenda": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "date", "time", "location", "category"]
+    },
+    "Address": {
+      "title": "Address",
+      "description": "A user's shipping address.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "detailedAddress": { "type": "string" },
+        "isDefault": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "recipientName", "phoneNumber", "detailedAddress", "isDefault"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles."
+    },
+    "/books/{bookId}": {
+      "schema": { "$ref": "#/entities/Book" },
+      "description": "Library books."
+    },
+    "/requests/{requestId}": {
+      "schema": { "$ref": "#/entities/Request" },
+      "description": "Borrow, return, and renew requests."
+    },
+    "/events/{eventId}": {
+      "schema": { "$ref": "#/entities/Event" },
+      "description": "Library events."
+    },
+    "/users/{userId}/addresses/{addressId}": {
+      "schema": { "$ref": "#/entities/Address" },
+      "description": "User shipping addresses."
+    }
+  }
+}

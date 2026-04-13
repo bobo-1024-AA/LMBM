@@ -1,0 +1,220 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - id: string (required, max 100 chars)
+    //   - memberId: string (required, max 50 chars)
+    //   - name: string (required, max 100 chars)
+    //   - email: string (required, max 100 chars)
+    //   - role: string (required, 'user' or 'admin')
+    //   - avatar: string (optional, max 500 chars)
+    //   - borrowedBooks: list (optional)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: books
+    // Document ID: {bookId}
+    // Fields:
+    //   - id: string (required, max 100 chars)
+    //   - title: map (required)
+    //   - author: map (required)
+    //   - category: string (required, max 50 chars)
+    //   - cover: string (optional, max 500 chars)
+    //   - description: map (optional)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: requests
+    // Document ID: {requestId}
+    // Fields:
+    //   - id: string (required, max 100 chars)
+    //   - userId: string (required, max 100 chars)
+    //   - userName: string (required, max 100 chars)
+    //   - bookId: string (required, max 100 chars)
+    //   - bookTitle: map (required)
+    //   - type: string (required, 'borrow', 'return', 'renew')
+    //   - date: string (required, max 50 chars)
+    //   - status: string (required, 'pending', 'approved', 'rejected')
+    //   - days: number (optional)
+    //   - trackingStatus: string (optional, max 50 chars)
+    //   - completedAt: timestamp (optional)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: events
+    // Document ID: {eventId}
+    // Fields:
+    //   - id: string (required, max 100 chars)
+    //   - title: map (required)
+    //   - date: string (required, max 50 chars)
+    //   - time: string (required, max 50 chars)
+    //   - location: map (required)
+    //   - category: string (required, max 50 chars)
+    //   - image: string (optional, max 500 chars)
+    //   - agenda: map (optional)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: users/{userId}/addresses
+    // Document ID: {addressId}
+    // Fields:
+    //   - id: string (required, max 100 chars)
+    //   - userId: string (required, max 100 chars)
+    //   - recipientName: string (required, max 100 chars)
+    //   - phoneNumber: string (required, max 50 chars)
+    //   - detailedAddress: string (required, max 500 chars)
+    //   - isDefault: bool (required)
+    //   - createdAt: timestamp (optional)
+    //
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.uid == "70t9c2f4NfMieoBALjueQnyRHLg2") ||
+          request.auth.uid == "ezLgaHfXhtYV8XpCX986mIYWWHv1");
+    }
+    function uidUnchanged() {
+      return !('id' in request.resource.data) || request.resource.data.id == request.auth.uid;
+    }
+    function uidNotModified() {
+      return !('id' in request.resource.data) || request.resource.data.id == resource.data.id;
+    }
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+    
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return hasRequiredFields(['id', 'memberId', 'name', 'email', 'role']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.memberId is string && data.memberId.size() > 0 && data.memberId.size() < 50 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 100 &&
+             data.role in ['admin', 'user'] &&
+             (!('avatar' in data) || (data.avatar is string && data.avatar.size() < 500)) &&
+             (!('borrowedBooks' in data) || data.borrowedBooks is list) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidBook(data) {
+      return hasRequiredFields(['id', 'title', 'author', 'category']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.title is map &&
+             data.author is map &&
+             data.category is string && data.category.size() > 0 && data.category.size() < 50 &&
+             (!('cover' in data) || (data.cover is string && data.cover.size() < 500)) &&
+             (!('description' in data) || data.description is map) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidRequest(data) {
+      return hasRequiredFields(['userId', 'userName', 'bookId', 'bookTitle', 'type', 'date', 'status']) &&
+             (!('id' in data) || (data.id is string && data.id.size() > 0 && data.id.size() < 100)) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.userName is string && data.userName.size() > 0 && data.userName.size() < 100 &&
+             data.bookId is string && data.bookId.size() > 0 && data.bookId.size() < 100 &&
+             (data.bookTitle is map || (data.bookTitle is string && data.bookTitle.size() < 500)) &&
+             data.type in ['borrow', 'return', 'renew'] &&
+             data.date is string && data.date.size() > 0 && data.date.size() < 50 &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             (!('days' in data) || data.days is number) &&
+             (!('quantity' in data) || data.quantity is number) &&
+             (!('trackingStatus' in data) || (data.trackingStatus is string && data.trackingStatus.size() < 50)) &&
+             (!('completedAt' in data) || data.completedAt is timestamp || (data.completedAt is string && data.completedAt.size() < 50)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidEvent(data) {
+      return hasRequiredFields(['id', 'title', 'date', 'time', 'location', 'category']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.title is map &&
+             data.date is string && data.date.size() > 0 && data.date.size() < 50 &&
+             data.time is string && data.time.size() > 0 && data.time.size() < 50 &&
+             data.location is map &&
+             data.category is string && data.category.size() > 0 && data.category.size() < 50 &&
+             (!('image' in data) || (data.image is string && data.image.size() < 500)) &&
+             (!('agenda' in data) || data.agenda is map) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidAddress(data) {
+      return hasRequiredFields(['id', 'userId', 'recipientName', 'phoneNumber', 'detailedAddress', 'isDefault']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.recipientName is string && data.recipientName.size() > 0 && data.recipientName.size() < 100 &&
+             data.phoneNumber is string && data.phoneNumber.size() > 0 && data.phoneNumber.size() < 50 &&
+             data.detailedAddress is string && data.detailedAddress.size() > 0 && data.detailedAddress.size() < 500 &&
+             data.isDefault is bool &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    uidUnchanged() && 
+                    (
+                      (isOwner(userId) && request.resource.data.role == 'user') || 
+                      isAdmin()
+                    );
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    uidNotModified() && 
+                    (
+                      (isOwner(userId) && request.resource.data.role == resource.data.role) || 
+                      isAdmin()
+                    );
+      allow delete: if isAdmin();
+      
+      match /addresses/{addressId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidAddress(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidAddress(request.resource.data) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    match /books/{bookId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidBook(request.resource.data);
+      allow update: if isAdmin() && isValidBook(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /requests/{requestId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow create: if isAuthenticated() && isValidRequest(request.resource.data) && 
+                    (isOwner(request.resource.data.userId) || isAdmin());
+      allow update: if isAdmin() && isValidRequest(request.resource.data) && 
+                    request.resource.data.userId == resource.data.userId;
+      allow delete: if isAdmin();
+    }
+
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidEvent(request.resource.data);
+      allow update: if isAdmin() && isValidEvent(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}
