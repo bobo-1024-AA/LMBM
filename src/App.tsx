@@ -97,7 +97,7 @@ interface LibraryUser {
   borrowedBooks: string[]; // IDs of books
 }
 
-type TrackingStatus = 'approved' | 'waiting_to_send' | 'please_send' | 'sent' | 'delivered';
+type TrackingStatus = 'approved' | 'waiting_to_send' | 'please_send' | 'sent' | 'delivered' | 'completed';
 
 interface Request {
   id: string;
@@ -124,6 +124,8 @@ interface Book {
     en: string;
     'zh-HK': string;
   };
+  quantity: number;
+  availableQuantity?: number;
 }
 
 interface Activity {
@@ -186,7 +188,8 @@ const ALL_BOOKS: Book[] = [
     description: {
       en: 'A series of personal writings by Marcus Aurelius, Roman Emperor from 161 to 180 AD, recording his private notes to himself and ideas on Stoic philosophy.',
       'zh-HK': '馬可·奧里略（公元 161 年至 180 年的羅馬皇帝）的一系列個人著作，記錄了他對自己的私人筆記以及關於斯多葛哲學的思想。'
-    }
+    },
+    quantity: 5
   },
   {
     id: '2',
@@ -197,7 +200,8 @@ const ALL_BOOKS: Book[] = [
     description: {
       en: 'The multi-generational story of the Buendía family, whose patriarch, José Arcadio Buendía, founded the (fictitious) town of Macondo.',
       'zh-HK': '布恩迪亞家族的多代故事，其族長何塞·阿卡迪奧·布恩迪亞創立了（虛構的）馬孔多鎮。'
-    }
+    },
+    quantity: 3
   },
   {
     id: '3',
@@ -208,7 +212,8 @@ const ALL_BOOKS: Book[] = [
     description: {
       en: 'A novel by W. Somerset Maugham, first published in 1919. It is told in episodic form by a first-person narrator, in a series of glimpses into the mind and soul of the central character, Charles Strickland.',
       'zh-HK': '威廉·薩默塞特·毛姆的小說，於 1919 年首次出版。它由第一人稱敘述者以插曲形式講述，通過一系列對中心人物查爾斯·斯特里克蘭的思想和靈魂的窺視。'
-    }
+    },
+    quantity: 2
   },
   {
     id: '4',
@@ -219,7 +224,8 @@ const ALL_BOOKS: Book[] = [
     description: {
       en: 'A 1925 novel by American writer F. Scott Fitzgerald. Set in the Jazz Age on Long Island, near New York City, the novel depicts first-person narrator Nick Carraway\'s interactions with mysterious millionaire Jay Gatsby.',
       'zh-HK': '美國作家 F. 斯科特·菲茨杰拉德 1925 年的小說。小說背景設定在紐約市附近的長島爵士樂時代，描繪了第一人稱敘述者尼克·卡拉威與神秘百萬富翁傑伊·蓋茨比的互動。'
-    }
+    },
+    quantity: 4
   },
   {
     id: '5',
@@ -230,7 +236,8 @@ const ALL_BOOKS: Book[] = [
     description: {
       en: 'A book by Yuval Noah Harari, first published in Hebrew in Israel in 2011 based on a series of lectures Harari taught at The Hebrew University of Jerusalem.',
       'zh-HK': '尤瓦爾·諾亞·哈拉里的一本書，2011 年在以色列首次以希伯來語出版，基於哈拉里在耶路撒冷希伯來大學教授的一系列講座。'
-    }
+    },
+    quantity: 6
   },
   {
     id: '6',
@@ -241,7 +248,8 @@ const ALL_BOOKS: Book[] = [
     description: {
       en: 'A popular science book written by physicist Stephen Hawking, and published by Hodder & Stoughton and Bantam Books on 16 October 2018.',
       'zh-HK': '物理學家史蒂芬·霍金撰寫的一本通俗科學書，由 Hodder & Stoughton 和 Bantam Books 於 2018 年 10 月 16 日出版。'
-    }
+    },
+    quantity: 1
   }
 ];
 
@@ -602,6 +610,7 @@ const getRemainingDays = (dueDate?: string | null) => {
 };
 
 const HomeView = ({ 
+  books,
   onProfileClick, 
   onBorrowedClick,
   onExploreClick,
@@ -619,6 +628,7 @@ const HomeView = ({
   language,
   t
 }: { 
+  books: Book[],
   onProfileClick: () => void, 
   onBorrowedClick: () => void,
   onExploreClick: () => void,
@@ -638,7 +648,7 @@ const HomeView = ({
   key?: string
 }) => {
   const filteredBooks = useMemo(() => {
-    return ALL_BOOKS.filter(book => {
+    return books.filter(book => {
       const matchesSearch = renderTranslatable(book.title, language).toLowerCase().includes(searchQuery.toLowerCase()) || 
                            renderTranslatable(book.author, language).toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = selectedCategory === 'catAll' || book.category === selectedCategory;
@@ -705,7 +715,7 @@ const HomeView = ({
           { icon: SearchCode, label: t.explore, color: 'bg-teal-50 text-teal-600', action: onExploreClick },
           { icon: BookOpen, label: t.borrowed, color: 'bg-yellow-50 text-yellow-600', action: onBorrowedClick },
         ].map((item, i) => (
-          <button key={i} onClick={item.action} className="flex flex-col items-center gap-2 active:scale-95 transition-transform">
+          <button key={`quick-${i}`} onClick={item.action} className="flex flex-col items-center gap-2 active:scale-95 transition-transform">
             <div className={`size-14 rounded-2xl flex items-center justify-center ${item.color}`}>
               <item.icon size={24} />
             </div>
@@ -853,6 +863,7 @@ const HomeView = ({
 };
 
 const LibraryView = ({ 
+  books,
   borrowed, 
   onBookClick, 
   onBorrow,
@@ -862,6 +873,7 @@ const LibraryView = ({
   language,
   t
 }: { 
+  books: Book[],
   borrowed: (Book & { dueDate?: string })[], 
   onBookClick: (book: Book) => void, 
   onBorrow: (book: Book) => void,
@@ -877,7 +889,7 @@ const LibraryView = ({
   const [sortBy, setSortBy] = useState<'title' | 'author'>('title');
   
   const filteredBooks = useMemo(() => {
-    const baseList = activeTab === 'all' ? ALL_BOOKS : borrowed;
+    const baseList = activeTab === 'all' ? books : borrowed;
     return baseList
       .filter(book => {
         const matchesSearch = renderTranslatable(book.title, language).toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1181,7 +1193,7 @@ const BulletinView = ({
               <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.agenda}</h5>
               <div className="space-y-3">
                 {selectedEvent.agenda?.[language].map((item, i) => (
-                  <div key={i} className="flex gap-3 items-start">
+                  <div key={`agenda-${i}`} className="flex gap-3 items-start">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                     <p className="text-sm text-slate-700 leading-relaxed">{item}</p>
                   </div>
@@ -1762,7 +1774,7 @@ const ProfileView = ({
             { icon: CalendarCheck, label: t.priority, description: t.priorityDesc, color: 'bg-purple-50 text-purple-500' },
           ].map((benefit, i) => (
             <button 
-              key={i} 
+              key={`benefit-${i}`} 
               onClick={() => setSelectedBenefit(benefit)}
               className="flex-shrink-0 w-32 p-4 rounded-2xl bg-white border border-slate-100 shadow-sm flex flex-col items-center text-center active:scale-95 transition-transform"
             >
@@ -2223,27 +2235,33 @@ const TrackingListView = ({
                     <div 
                       className={`h-full transition-all duration-700 ease-out ${req.status === 'rejected' ? 'bg-red-500' : 'bg-blue-500'}`} 
                       style={{ 
-                        width: req.status === 'pending' ? '25%' :
+                        width: req.status === 'pending' ? (req.type === 'renew' ? '50%' : req.type === 'return' ? '33%' : '25%') :
                                req.status === 'rejected' ? '100%' :
-                               req.trackingStatus === 'approved' ? '25%' : 
-                               req.trackingStatus === 'waiting_to_send' || req.trackingStatus === 'please_send' ? '50%' : 
-                               req.trackingStatus === 'sent' ? '75%' : '100%' 
+                               req.trackingStatus === 'completed' || req.trackingStatus === 'delivered' ? '100%' : 
+                               req.trackingStatus === 'sent' ? '75%' : 
+                               req.trackingStatus === 'waiting_to_send' ? '50%' : 
+                               req.trackingStatus === 'please_send' ? '66%' : 
+                               (req.type === 'renew' ? '50%' : req.type === 'return' ? '33%' : '25%')
                       }} 
                     />
                   </div>
                   <span className="text-xs font-bold text-slate-400">
-                    {req.status === 'pending' ? '25%' :
+                    {req.status === 'pending' ? (req.type === 'renew' ? '50%' : req.type === 'return' ? '33%' : '25%') :
                      req.status === 'rejected' ? '100%' :
-                     req.trackingStatus === 'delivered' ? '100%' : 
+                     req.trackingStatus === 'completed' || req.trackingStatus === 'delivered' ? '100%' : 
                      req.trackingStatus === 'sent' ? '75%' : 
-                     req.trackingStatus === 'waiting_to_send' || req.trackingStatus === 'please_send' ? '50%' : '25%'}
+                     req.trackingStatus === 'waiting_to_send' ? '50%' : 
+                     req.trackingStatus === 'please_send' ? '66%' : 
+                     (req.type === 'renew' ? '50%' : req.type === 'return' ? '33%' : '25%')}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <div className={`grid gap-1 ${req.type === 'return' ? 'grid-cols-3' : 'grid-cols-4'} flex-1`}>
+                  <div className={`grid gap-1 ${req.type === 'return' ? 'grid-cols-3' : req.type === 'renew' ? 'grid-cols-2' : 'grid-cols-4'} flex-1`}>
                     {(req.type === 'return' 
                       ? ['approved', 'please_send', 'delivered'] 
+                      : req.type === 'renew'
+                      ? ['approved', 'completed']
                       : ['approved', 'waiting_to_send', 'sent', 'delivered']
                     ).map((step, idx, array) => {
                       const isActive = req.trackingStatus === step || (req.status === 'pending' && idx === 0);
@@ -2260,10 +2278,10 @@ const TrackingListView = ({
                   </div>
                 </div>
 
-                {req.trackingStatus === 'delivered' && req.completedAt && (
+                {(req.trackingStatus === 'delivered' || req.trackingStatus === 'completed') && req.completedAt && (
                   <div className="pt-2 border-t border-slate-50 flex justify-between items-center">
                     <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider bg-green-50 px-2 py-0.5 rounded-md">
-                      {t.statusDelivered}
+                      {req.trackingStatus === 'completed' ? t.completed : t.statusDelivered}
                     </span>
                     <span className="text-[10px] text-slate-400">
                       {new Date(req.completedAt).toLocaleDateString()} {new Date(req.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -2362,7 +2380,7 @@ export default function App() {
       } else {
         const fetchedBooks: Book[] = [];
         snapshot.forEach(doc => {
-          fetchedBooks.push(doc.data() as Book);
+          fetchedBooks.push({ id: doc.id, ...doc.data() } as Book);
         });
         setBooks(fetchedBooks);
       }
@@ -2456,7 +2474,7 @@ export default function App() {
 
         bookStatus.forEach((count, bookId) => {
           if (count > 0) {
-            const book = ALL_BOOKS.find(b => b.id === bookId);
+            const book = books.find(b => b.id === bookId) || ALL_BOOKS.find(b => b.id === bookId);
             if (book) {
               // In a real app, dueDate would be calculated from the borrow date + renewals
               borrowed.push({ ...book, dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() });
@@ -2510,7 +2528,7 @@ export default function App() {
 
   const addNotification = (title: string, message: string, type: 'success' | 'info' | 'admin' = 'success') => {
     const newNotif: Notification = {
-      id: Date.now().toString(),
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       title,
       message,
       date: new Date().toLocaleString(),
@@ -2524,17 +2542,19 @@ export default function App() {
     // Handled by onAuthStateChanged
   };
 
+  const performLogout = async () => {
+    try {
+      await signOut(auth);
+      setIsLoggedIn(false);
+      setUserRole('user');
+      setView('login');
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
   const handleLogout = async () => {
-    showConfirm(t.logout, t.logoutConfirm, async () => {
-      try {
-        await signOut(auth);
-        setIsLoggedIn(false);
-        setUserRole('user');
-        setView('login');
-      } catch (error) {
-        console.error("Logout failed:", error);
-      }
-    });
+    showConfirm(t.logout, t.logoutConfirm, performLogout);
   };
 
   const handleAdminAction = async (id: string, status: 'approved' | 'rejected') => {
@@ -2564,7 +2584,7 @@ export default function App() {
       <AdminDashboard 
         books={books}
         requests={pendingRequests}
-        onLogout={handleLogout}
+        onLogout={performLogout}
         t={t}
         language={language}
       />
@@ -2588,6 +2608,7 @@ export default function App() {
         {view === 'home' && (
           <HomeView 
             key="home" 
+            books={books}
             onProfileClick={() => setView('profile')} 
             onBorrowedClick={() => {
               setLibraryTab('borrowed');
@@ -2622,6 +2643,7 @@ export default function App() {
         {view === 'bookshelf' && (
           <LibraryView 
             key="bookshelf" 
+            books={books}
             borrowed={borrowedBooks} 
             activeTab={libraryTab}
             setActiveTab={setLibraryTab}
@@ -2849,6 +2871,18 @@ export default function App() {
                     +
                   </button>
                 </div>
+                {modalMode === 'borrow' && (() => {
+                  const book = books.find(b => renderTranslatable(b.title, language) === bookName);
+                  if (!book) return null;
+                  const avail = book.availableQuantity ?? book.quantity ?? 1;
+                  return (
+                    <div className="mt-1 text-center">
+                      <p className={`text-[10px] font-bold ${avail < parseInt(quantity) ? 'text-red-500' : 'text-slate-400'}`}>
+                        {language === 'zh-HK' ? `庫存: ${avail}` : `Available: ${avail}`}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
 
               {modalMode === 'borrow' && (
@@ -2899,7 +2933,10 @@ export default function App() {
               {t.cancel}
             </button>
             <button 
-              disabled={!bookName.trim() || !quantity || parseInt(quantity) < 1}
+              disabled={!bookName.trim() || !quantity || parseInt(quantity) < 1 || (modalMode === 'borrow' && (() => {
+                const book = books.find(b => renderTranslatable(b.title, language) === bookName);
+                return book && (book.availableQuantity ?? book.quantity ?? 1) < parseInt(quantity);
+              })())}
               onClick={async () => {
                 setIsBorrowModalOpen(false);
                 if (!auth.currentUser) return;
@@ -2925,7 +2962,11 @@ export default function App() {
                       setIsBorrowModalOpen(false);
                     }
                   } else {
-                    const book = ALL_BOOKS.find(b => renderTranslatable(b.title, language) === bookName);
+                    const book = books.find(b => renderTranslatable(b.title, language) === bookName);
+                    if (book && (book.availableQuantity ?? book.quantity ?? 1) < parseInt(quantity)) {
+                      showToast(t.insufficientStock || "Insufficient stock", "error");
+                      return;
+                    }
                     const newReqRef = doc(collection(db, 'requests'));
                     await setDoc(newReqRef, {
                       id: newReqRef.id,
@@ -2950,7 +2991,10 @@ export default function App() {
                 }
               }}
               className={`flex-1 py-3 text-white rounded-xl font-bold text-sm shadow-lg transition-all ${
-                !bookName.trim() || !quantity || parseInt(quantity) < 1
+                !bookName.trim() || !quantity || parseInt(quantity) < 1 || (modalMode === 'borrow' && (() => {
+                  const book = books.find(b => renderTranslatable(b.title, language) === bookName);
+                  return book && (book.availableQuantity ?? book.quantity ?? 1) < parseInt(quantity);
+                })())
                 ? 'bg-slate-300 cursor-not-allowed shadow-none' 
                 : modalMode === 'borrow' ? 'bg-orange-500 shadow-orange-200' : 'bg-yellow-500 shadow-yellow-200'
               }`}
@@ -3025,7 +3069,7 @@ export default function App() {
                 if (!auth.currentUser) return;
                 try {
                   for (const bookId of selectedRenewBooks) {
-                    const book = ALL_BOOKS.find(b => b.id === bookId);
+                    const book = books.find(b => b.id === bookId) || ALL_BOOKS.find(b => b.id === bookId);
                     const newReqRef = doc(collection(db, 'requests'));
                     await setDoc(newReqRef, {
                       id: newReqRef.id,

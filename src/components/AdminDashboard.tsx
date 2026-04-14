@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookOpen, Users, LayoutDashboard, Settings, LogOut, Plus, Edit2, Trash2, Search, Bell, Filter, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Clock, MapPin, Download, FileText, Calendar, Building2, Phone } from 'lucide-react';
+import { BookOpen, Users, LayoutDashboard, Settings, LogOut, Plus, Edit2, Trash2, Search, Bell, Filter, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Clock, MapPin, Download, FileText, Calendar, Building2, Phone, User, Lock } from 'lucide-react';
 import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Toast, ToastType, ConfirmDialog } from './ui/Feedback';
@@ -67,6 +67,9 @@ export const AdminDashboard = ({
 }: any) => {
   const [activeMenu, setActiveMenu] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [readNotifs, setReadNotifs] = useState<Set<string>>(new Set());
   const [users, setUsers] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
 
@@ -92,6 +95,15 @@ export const AdminDashboard = ({
 
   const showConfirm = (title: string, message: string, onConfirm: () => void, type: 'primary' | 'danger' = 'primary') => {
     setConfirmDialog({ isOpen: true, title, message, onConfirm, type });
+  };
+
+  const handleAdminLogout = () => {
+    showConfirm(
+      t.logout || "Logout",
+      t.logoutConfirm || "Are you sure you want to logout?",
+      onLogout,
+      'danger'
+    );
   };
 
   useEffect(() => {
@@ -133,7 +145,8 @@ export const AdminDashboard = ({
     cover: '',
     descriptionEn: '',
     descriptionZh: '',
-    storageLocation: ''
+    storageLocation: '',
+    quantity: 1
   });
 
   const [eventForm, setEventForm] = useState({
@@ -235,13 +248,15 @@ export const AdminDashboard = ({
         cover: book.cover || '',
         descriptionEn: book.description?.en || '',
         descriptionZh: book.description?.['zh-HK'] || '',
-        storageLocation: book.storageLocation || ''
+        storageLocation: book.storageLocation || '',
+        quantity: book.quantity || 1
       });
     } else {
       setEditingBook(null);
       setBookForm({
         titleEn: '', titleZh: '', authorEn: '', authorZh: '',
-        category: 'catPhilosophy', cover: '', descriptionEn: '', descriptionZh: '', storageLocation: ''
+        category: 'catPhilosophy', cover: '', descriptionEn: '', descriptionZh: '', storageLocation: '',
+        quantity: 1
       });
     }
     setIsBookModalOpen(true);
@@ -258,6 +273,8 @@ export const AdminDashboard = ({
         cover: bookForm.cover,
         description: { en: bookForm.descriptionEn, 'zh-HK': bookForm.descriptionZh },
         storageLocation: bookForm.storageLocation,
+        quantity: bookForm.quantity,
+        availableQuantity: editingBook ? Math.max(0, bookForm.quantity - ((editingBook.quantity || 0) - (editingBook.availableQuantity || 0))) : bookForm.quantity,
         updatedAt: serverTimestamp()
       };
 
@@ -296,6 +313,24 @@ export const AdminDashboard = ({
 
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
+  const pendingRequests = requests?.filter((r: any) => r.status === 'pending') || [];
+  const notifications = pendingRequests
+    .filter((r: any) => !readNotifs.has(r.id))
+    .map((r: any) => ({
+      id: r.id,
+      title: r.type === 'borrow' ? 'New Borrow Request' : r.type === 'return' ? 'New Return Request' : 'New Renew Request',
+      desc: `${r.userName} requested to ${r.type} "${r.bookTitle?.en || r.bookTitle}"`,
+      time: r.createdAt ? new Date(r.createdAt.toMillis ? r.createdAt.toMillis() : Date.now()).toLocaleDateString() : 'Just now',
+      icon: BookOpen,
+      color: 'text-blue-600 bg-blue-50'
+    }));
+
+  const handleMarkAllRead = () => {
+    const newRead = new Set(readNotifs);
+    pendingRequests.forEach((r: any) => newRead.add(r.id));
+    setReadNotifs(newRead);
+  };
+
   const handleToggleRole = async (userId: string, currentRole: string) => {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
     showConfirm(
@@ -321,17 +356,43 @@ export const AdminDashboard = ({
       const req = requests.find((r: any) => r.id === reqId);
       const updateData: any = { status: newStatus };
       
+      // Handle availableQuantity update
+      if (newStatus === 'approved' && req?.status !== 'approved') {
+        const book = books.find((b: any) => b.id === req.bookId);
+        if (book) {
+          if (req.type === 'borrow') {
+            const newAvailable = Math.max(0, (book.availableQuantity ?? book.quantity ?? 1) - (req.quantity || 1));
+            await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
+          } else if (req.type === 'return') {
+            const newAvailable = Math.min(book.quantity || 1, (book.availableQuantity ?? book.quantity ?? 1) + (req.quantity || 1));
+            await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
+          }
+        }
+      } else if (newStatus === 'rejected' && req?.status === 'approved') {
+        // Reverting approval
+        const book = books.find((b: any) => b.id === req.bookId);
+        if (book) {
+          if (req.type === 'borrow') {
+            const newAvailable = Math.min(book.quantity || 1, (book.availableQuantity ?? book.quantity ?? 1) + (req.quantity || 1));
+            await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
+          } else if (req.type === 'return') {
+            const newAvailable = Math.max(0, (book.availableQuantity ?? book.quantity ?? 1) - (req.quantity || 1));
+            await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
+          }
+        }
+      }
+
       let finalTrackingStatus = trackingStatus;
       
       // If it's a borrow request with pickup method and it's being approved
-      if (newStatus === 'approved' && req?.type === 'borrow' && req?.deliveryMethod === 'pickup' && !trackingStatus) {
+      if (newStatus === 'approved' && req?.type === 'borrow' && req?.deliveryMethod === 'pickup' && trackingStatus === 'waiting_to_send') {
         finalTrackingStatus = 'delivered';
       }
 
       if (finalTrackingStatus) {
         updateData.trackingStatus = finalTrackingStatus;
       }
-      if (finalTrackingStatus === 'delivered') {
+      if (finalTrackingStatus === 'delivered' || finalTrackingStatus === 'completed') {
         updateData.completedAt = new Date().toISOString();
       }
       await updateDoc(doc(db, path, reqId), updateData);
@@ -351,8 +412,14 @@ export const AdminDashboard = ({
     (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const getBookTitle = (title: any) => {
+    if (!title) return 'Unknown Book';
+    if (typeof title === 'string') return title;
+    return title.en || title['zh-HK'] || 'Unknown Book';
+  };
+
   const filteredRequests = requests?.filter((req: any) => 
-    (req.bookName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    getBookTitle(req.bookTitle).toLowerCase().includes(searchQuery.toLowerCase()) ||
     (req.userName || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -738,7 +805,7 @@ export const AdminDashboard = ({
                       key={req.id} 
                       onClick={() => {
                         setActiveMenu('circulation');
-                        setSearchQuery(req.bookName || '');
+                        setSearchQuery(getBookTitle(req.bookTitle));
                       }}
                       className="w-full flex items-center gap-4 p-3 hover:bg-blue-50 rounded-xl transition-colors text-left group"
                     >
@@ -748,7 +815,7 @@ export const AdminDashboard = ({
                           {req.type === 'borrow' ? 'Borrow Request' : req.type === 'return' ? 'Return Request' : 'Renewal Request'}
                         </p>
                         <p className="text-xs text-slate-500 truncate">
-                          {req.bookName} • {new Date(req.date).toLocaleDateString()}
+                          {getBookTitle(req.bookTitle)} • {new Date(req.date).toLocaleDateString()}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -809,7 +876,7 @@ export const AdminDashboard = ({
                           </div>
                         </td>
                         <td className="p-4">
-                          <p className="text-sm font-bold text-slate-900">{req.bookName || 'Unknown Book'}</p>
+                          <p className="text-sm font-bold text-slate-900">{getBookTitle(req.bookTitle)}</p>
                           <p className="text-xs text-slate-500 font-mono mt-0.5">ID: {req.bookId?.slice(0, 8)}</p>
                         </td>
                         <td className="p-4">
@@ -838,7 +905,7 @@ export const AdminDashboard = ({
                           {req.status === 'pending' ? (
                             <div className="flex items-center justify-end gap-2">
                               <button 
-                                onClick={() => handleUpdateReqStatus(req.id, 'approved', req.type === 'borrow' ? 'processing' : undefined)}
+                                onClick={() => handleUpdateReqStatus(req.id, 'approved', req.type === 'borrow' ? 'waiting_to_send' : req.type === 'return' ? 'please_send' : 'completed')}
                                 className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors"
                               >
                                 Approve
@@ -850,22 +917,30 @@ export const AdminDashboard = ({
                                 Reject
                               </button>
                             </div>
-                          ) : req.status === 'approved' && req.type === 'borrow' && req.trackingStatus !== 'delivered' ? (
+                          ) : req.status === 'approved' && req.trackingStatus !== 'delivered' && req.trackingStatus !== 'completed' ? (
                             <div className="flex items-center justify-end gap-2">
-                              {req.trackingStatus === 'processing' && (
+                              {req.type === 'borrow' && req.trackingStatus === 'waiting_to_send' && (
                                 <button 
-                                  onClick={() => handleUpdateReqStatus(req.id, 'approved', 'shipped')}
+                                  onClick={() => handleUpdateReqStatus(req.id, 'approved', 'sent')}
                                   className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
                                 >
                                   Mark as Sent
                                 </button>
                               )}
-                              {req.trackingStatus === 'shipped' && (
+                              {req.type === 'borrow' && req.trackingStatus === 'sent' && (
                                 <button 
                                   onClick={() => handleUpdateReqStatus(req.id, 'approved', 'delivered')}
-                                  className="px-3 py-1.5 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-lg text-xs font-bold transition-colors"
+                                  className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors"
                                 >
                                   Mark as Delivered
+                                </button>
+                              )}
+                              {req.type === 'return' && req.trackingStatus === 'please_send' && (
+                                <button 
+                                  onClick={() => handleUpdateReqStatus(req.id, 'approved', 'delivered')}
+                                  className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  Mark as Returned
                                 </button>
                               )}
                             </div>
@@ -913,7 +988,7 @@ export const AdminDashboard = ({
                       </span>
                     </div>
                     <div className="bg-slate-50 p-3 rounded-xl">
-                      <p className="text-sm font-bold text-slate-900 truncate">{req.bookName || 'Unknown Book'}</p>
+                      <p className="text-sm font-bold text-slate-900 truncate">{getBookTitle(req.bookTitle)}</p>
                       <div className="flex items-center justify-between mt-1">
                         <p className="text-xs text-slate-500">By: {req.userName || 'Unknown User'}</p>
                         <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider ${
@@ -926,7 +1001,7 @@ export const AdminDashboard = ({
                     {req.status === 'pending' ? (
                       <div className="flex gap-2 pt-2">
                         <button 
-                          onClick={() => handleUpdateReqStatus(req.id, 'approved', req.type === 'borrow' ? 'processing' : undefined)}
+                          onClick={() => handleUpdateReqStatus(req.id, 'approved', req.type === 'borrow' ? 'waiting_to_send' : req.type === 'return' ? 'please_send' : 'completed')}
                           className="flex-1 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-xl text-sm font-bold transition-colors"
                         >
                           Approve
@@ -938,22 +1013,30 @@ export const AdminDashboard = ({
                           Reject
                         </button>
                       </div>
-                    ) : req.status === 'approved' && req.type === 'borrow' && req.trackingStatus !== 'delivered' ? (
+                    ) : req.status === 'approved' && req.trackingStatus !== 'delivered' && req.trackingStatus !== 'completed' ? (
                       <div className="flex gap-2 pt-2">
-                        {req.trackingStatus === 'processing' && (
+                        {req.type === 'borrow' && req.trackingStatus === 'waiting_to_send' && (
                           <button 
-                            onClick={() => handleUpdateReqStatus(req.id, 'approved', 'shipped')}
+                            onClick={() => handleUpdateReqStatus(req.id, 'approved', 'sent')}
                             className="flex-1 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl text-sm font-bold transition-colors"
                           >
                             Mark as Sent
                           </button>
                         )}
-                        {req.trackingStatus === 'shipped' && (
+                        {req.type === 'borrow' && req.trackingStatus === 'sent' && (
                           <button 
                             onClick={() => handleUpdateReqStatus(req.id, 'approved', 'delivered')}
                             className="flex-1 py-2 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-xl text-sm font-bold transition-colors"
                           >
                             Mark as Delivered
+                          </button>
+                        )}
+                        {req.type === 'return' && req.trackingStatus === 'please_send' && (
+                          <button 
+                            onClick={() => handleUpdateReqStatus(req.id, 'approved', 'delivered')}
+                            className="flex-1 py-2 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-xl text-sm font-bold transition-colors"
+                          >
+                            Mark as Returned
                           </button>
                         )}
                       </div>
@@ -1226,7 +1309,7 @@ export const AdminDashboard = ({
               <p className="text-sm font-bold text-slate-900 truncate">Admin User</p>
               <p className="text-xs text-slate-500 truncate">Head Librarian</p>
             </div>
-            <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-600 transition-colors">
+            <button onClick={handleAdminLogout} className="p-2 text-slate-400 hover:text-red-600 transition-colors">
               <LogOut size={16} />
             </button>
           </div>
@@ -1250,8 +1333,107 @@ export const AdminDashboard = ({
               />
             </div>
             <div className="flex items-center gap-4 text-slate-400">
-              <button className="hover:text-slate-600 transition-colors"><Bell size={20} /></button>
-              <button className="hover:text-slate-600 transition-colors"><Settings size={20} /></button>
+              <div className="relative">
+                <button 
+                  onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                  className="hover:text-slate-600 transition-colors relative"
+                >
+                  <Bell size={20} />
+                  {notifications.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+                  )}
+                </button>
+                
+                <AnimatePresence>
+                  {isNotificationsOpen && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <h3 className="font-bold text-slate-900">Notifications</h3>
+                        {notifications.length > 0 && (
+                          <button onClick={handleMarkAllRead} className="text-xs text-blue-600 font-bold hover:underline">Mark all read</button>
+                        )}
+                      </div>
+                      <div className="max-h-96 overflow-y-auto">
+                        {notifications.length > 0 ? notifications.map((n: any) => (
+                          <div key={`admin-notif-${n.id}`} className="p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer">
+                            <div className="flex gap-3">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${n.color}`}>
+                                <n.icon size={16} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-900">{n.title}</p>
+                                <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{n.desc}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">{n.time}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )) : (
+                          <div className="p-8 text-center text-slate-500 text-sm">
+                            {t.noNotifications || "No notifications"}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 text-center border-t border-slate-100">
+                        <button className="text-sm text-slate-500 font-medium hover:text-slate-900 transition-colors">View all notifications</button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="relative">
+                <button 
+                  onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                  className="hover:text-slate-600 transition-colors"
+                >
+                  <Settings size={20} />
+                </button>
+
+                <AnimatePresence>
+                  {isSettingsOpen && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+                        <h3 className="font-bold text-slate-900">Admin Settings</h3>
+                      </div>
+                      <div className="p-2">
+                        {[
+                          { icon: User, label: 'Profile Settings' },
+                          { icon: Lock, label: 'Security & Privacy' },
+                          { icon: Bell, label: 'Notification Preferences' },
+                          { icon: Building2, label: 'Library Information' },
+                        ].map((item, i) => (
+                          <button 
+                            key={`admin-setting-${i}`}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all"
+                          >
+                            <item.icon size={18} className="text-slate-400" />
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="p-2 border-t border-slate-100">
+                        <button 
+                          onClick={handleAdminLogout}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                        >
+                          <LogOut size={18} />
+                          Sign Out
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
         </header>
@@ -1360,9 +1542,15 @@ export const AdminDashboard = ({
                       <label className="block text-sm font-medium text-slate-700 mb-1">Cover Image URL</label>
                       <input type="url" value={bookForm.cover} onChange={e => setBookForm({...bookForm, cover: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" placeholder="https://..." />
                     </div>
-                    <div className="col-span-2">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Storage Location</label>
-                      <input type="text" value={bookForm.storageLocation} onChange={e => setBookForm({...bookForm, storageLocation: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" placeholder="e.g. Aisle 04 / Shelf B-12" />
+                    <div className="col-span-2 grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Storage Location</label>
+                        <input type="text" value={bookForm.storageLocation} onChange={e => setBookForm({...bookForm, storageLocation: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" placeholder="e.g. Aisle 04 / Shelf B-12" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Total Quantity</label>
+                        <input required type="number" min="1" value={bookForm.quantity} onChange={e => setBookForm({...bookForm, quantity: parseInt(e.target.value) || 1})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 outline-none" />
+                      </div>
                     </div>
                   </div>
                 </form>

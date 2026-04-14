@@ -163,6 +163,7 @@ export const translations = {
     statusPleaseSend: 'Please Send Book',
     statusSent: 'Book Sent',
     statusDelivered: 'Book Delivered',
+    statusCompleted: 'Completed',
     updateStatus: 'Update Status',
     activeTasks: 'Active Tasks',
     noActiveTasks: 'No active tasks',
@@ -188,6 +189,7 @@ export const translations = {
     delete: 'Delete',
     logoutConfirm: 'Are you sure you want to logout?',
     quantity: 'Quantity',
+    insufficientStock: 'Insufficient available quantity',
   },
   'zh-HK': {
     // Common
@@ -351,6 +353,7 @@ export const translations = {
     statusPleaseSend: '請寄出書籍',
     statusSent: '書籍已寄出',
     statusDelivered: '書籍已經送達',
+    statusCompleted: '已完成',
     updateStatus: '更新狀態',
     activeTasks: '項進行中任務',
     noActiveTasks: '暫無進行中任務',
@@ -376,5 +379,6 @@ export const translations = {
     delete: '刪除',
     logoutConfirm: '您確定要登出嗎？',
     quantity: '數量',
+    insufficientStock: '庫存不足',
   }
 };
