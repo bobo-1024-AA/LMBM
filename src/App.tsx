@@ -40,7 +40,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { translations, Language } from './translations';
 import { auth, db, googleProvider } from './firebase';
-import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, User as FirebaseUser } from 'firebase/auth';
 import { collection, doc, onSnapshot, setDoc, updateDoc, addDoc, query, where, getDoc, getDocs, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { AdminDashboard } from './components/AdminDashboard';
 import { Toast, ToastType, ConfirmDialog } from './components/ui/Feedback';
@@ -626,7 +626,8 @@ const HomeView = ({
   setSelectedRenewBooks,
   unreadCount,
   language,
-  t
+  t,
+  userDisplayName
 }: { 
   books: Book[],
   onProfileClick: () => void, 
@@ -645,6 +646,7 @@ const HomeView = ({
   unreadCount: number,
   language: Language,
   t: any,
+  userDisplayName: string,
   key?: string
 }) => {
   const filteredBooks = useMemo(() => {
@@ -669,14 +671,14 @@ const HomeView = ({
           <div className="size-12 rounded-full overflow-hidden border-2 border-blue-100">
             <img 
               className="size-full object-cover" 
-              src={auth.currentUser?.photoURL || "https://api.dicebear.com/7.x/avataaars/svg?seed=z11bao36g"} 
+              src={auth.currentUser?.photoURL || "https://api.dicebear.com/7.x/avataaars/svg?seed=library"} 
               alt="User Avatar"
               referrerPolicy="no-referrer"
             />
           </div>
           <div>
             <p className="text-xs text-slate-400">{t.hello}</p>
-            <h2 className="text-xl font-bold text-slate-800">{auth.currentUser?.displayName || t.userName}, {t.welcomeBack}</h2>
+            <h2 className="text-xl font-bold text-slate-800">{userDisplayName || t.userName}, {t.welcomeBack}</h2>
           </div>
         </div>
         <button 
@@ -1332,7 +1334,9 @@ const ProfileView = ({
   setModalMode,
   setBookName,
   setLockBookName,
-  setIsBorrowModalOpen
+  setIsBorrowModalOpen,
+  userDisplayName,
+  setUserDisplayName
 }: { 
   onBack: () => void, 
   onShowQr: () => void, 
@@ -1351,6 +1355,8 @@ const ProfileView = ({
   setBookName: (n: string) => void,
   setLockBookName: (l: boolean) => void,
   setIsBorrowModalOpen: (o: boolean) => void,
+  userDisplayName: string,
+  setUserDisplayName: (name: string) => void,
   key?: string 
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1364,6 +1370,14 @@ const ProfileView = ({
   const [activeStatModal, setActiveStatModal] = useState<'borrowed' | 'returned' | 'overdue' | null>(null);
   const [selectedBenefit, setSelectedBenefit] = useState<{ icon: React.ElementType, label: string, description: string, color: string } | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState(userDisplayName);
+
+  useEffect(() => {
+    if (isEditProfileOpen) {
+      setEditDisplayName(userDisplayName);
+    }
+  }, [isEditProfileOpen, userDisplayName]);
 
   const dynamicActivities = useMemo(() => {
     const activities: Activity[] = [];
@@ -1407,6 +1421,26 @@ const ProfileView = ({
 
   const returnedActivities = ACTIVITIES.filter(a => a.type === 'return');
   const overdueBooks: Book[] = []; // Mocking overdue as empty for now
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+    
+    try {
+      await updateProfile(auth.currentUser, {
+        displayName: editDisplayName
+      });
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        name: editDisplayName
+      });
+      setUserDisplayName(editDisplayName);
+      showToast(t.profileUpdated || 'Profile updated successfully', 'success');
+      setIsEditProfileOpen(false);
+    } catch (error) {
+      console.error(error);
+      showToast('Error updating profile', 'error');
+    }
+  };
 
   const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1523,6 +1557,17 @@ const ProfileView = ({
               >
                 <button 
                   onClick={() => {
+                    setIsEditProfileOpen(true);
+                    setIsSettingsOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  <User size={16} className="text-slate-400" />
+                  {t.editProfile}
+                </button>
+                <div className="h-px bg-slate-50 my-1 mx-2" />
+                <button 
+                  onClick={() => {
                     setIsChangePasswordOpen(true);
                     setIsSettingsOpen(false);
                   }}
@@ -1594,12 +1639,12 @@ const ProfileView = ({
             <img 
               alt={t.profile} 
               className="w-full h-full object-cover rounded-full bg-slate-50" 
-              src={auth.currentUser?.photoURL || "https://api.dicebear.com/7.x/avataaars/svg?seed=z11bao36g"}
+              src={auth.currentUser?.photoURL || "https://api.dicebear.com/7.x/avataaars/svg?seed=library"}
               referrerPolicy="no-referrer"
             />
           </div>
         </button>
-        <h2 className="text-3xl font-bold text-slate-900 tracking-tight">{auth.currentUser?.displayName || t.userName}</h2>
+        <h2 className="text-3xl font-bold text-slate-900 tracking-tight">{userDisplayName || t.userName}</h2>
         <div className="mt-3 px-5 py-1.5 bg-blue-50/80 backdrop-blur-sm text-blue-600 rounded-full text-[11px] font-bold tracking-wider border border-blue-100/50">
           ID: 8842-9901
         </div>
@@ -2159,6 +2204,35 @@ const ProfileView = ({
           </button>
         </form>
       </Modal>
+
+      {/* Edit Profile Modal */}
+      <Modal 
+        isOpen={isEditProfileOpen} 
+        onClose={() => setIsEditProfileOpen(false)} 
+        title={t.editProfile}
+      >
+        <form onSubmit={handleUpdateProfile} className="py-4 space-y-4">
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block ml-1">{t.displayName}</label>
+              <input 
+                type="text" 
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                required
+                placeholder={t.displayName}
+                className="w-full h-14 px-4 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-bold text-slate-800"
+              />
+            </div>
+          </div>
+          <button 
+            type="submit"
+            className="w-full h-14 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200 active:scale-95 transition-all mt-6"
+          >
+            {t.updateProfile}
+          </button>
+        </form>
+      </Modal>
     </motion.div>
   );
 };
@@ -2338,8 +2412,9 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [books, setBooks] = useState<Book[]>(ALL_BOOKS);
   const [events, setEvents] = useState<any[]>([]);
+  const [userDisplayName, setUserDisplayName] = useState<string>('');
   const [addresses, setAddresses] = useState<ShippingAddress[]>([
-    { id: '1', recipientName: t.userName, phoneNumber: '123-456-7890', detailedAddress: '123 Library St, Booktown, BK 12345', isDefault: true },
+    { id: '1', recipientName: userDisplayName || t.userName, phoneNumber: '123-456-7890', detailedAddress: '123 Library St, Booktown, BK 12345', isDefault: true },
   ]);
 
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -2415,6 +2490,7 @@ export default function App() {
           let role: UserRole = 'user';
           if (userSnap.exists()) {
             role = userSnap.data().role as UserRole;
+            setUserDisplayName(userSnap.data().name || user.displayName || '');
             const isAdminEmail = user.email === 'z11bao36g@gmail.com' || user.email === 'admin@hkmu.edu.hk';
             const isAdminUid = user.uid === 'ezLgaHfXhtYV8XpCX986mIYWWHv1';
             
@@ -2426,10 +2502,12 @@ export default function App() {
             const isAdminEmail = user.email === 'z11bao36g@gmail.com' || user.email === 'admin@hkmu.edu.hk';
             const isAdminUid = user.uid === 'ezLgaHfXhtYV8XpCX986mIYWWHv1';
             role = (isAdminEmail || isAdminUid) ? 'admin' : 'user';
+            const newName = user.displayName || '';
+            setUserDisplayName(newName);
             await setDoc(userRef, {
               id: user.uid,
               memberId: Math.floor(1000 + Math.random() * 9000) + '-' + Math.floor(1000 + Math.random() * 9000),
-              name: user.displayName || 'Library Member',
+              name: newName || 'Library Member',
               email: user.email,
               role,
               avatar: user.photoURL || '',
@@ -2624,6 +2702,7 @@ export default function App() {
           <HomeView 
             key="home" 
             books={books}
+            userDisplayName={userDisplayName}
             onProfileClick={() => setView('profile')} 
             onBorrowedClick={() => {
               setLibraryTab('borrowed');
@@ -2751,6 +2830,8 @@ export default function App() {
             setBookName={setBookName}
             setLockBookName={setLockBookName}
             setIsBorrowModalOpen={setIsBorrowModalOpen}
+            userDisplayName={userDisplayName}
+            setUserDisplayName={setUserDisplayName}
           />
         )}
         {view === 'trackingList' && (
@@ -2966,7 +3047,7 @@ export default function App() {
                         bookId: book.id,
                         bookTitle: book.title,
                         userId: auth.currentUser.uid,
-                        userName: auth.currentUser.displayName || t.userName,
+                        userName: userDisplayName || t.userName,
                         status: 'pending',
                         trackingStatus: 'pending',
                         date: new Date().toISOString(),
@@ -2989,7 +3070,7 @@ export default function App() {
                       bookId: book?.id || 'unknown',
                       bookTitle: book ? book.title : { en: bookName, 'zh-HK': bookName },
                       userId: auth.currentUser.uid,
-                      userName: auth.currentUser.displayName || t.userName,
+                      userName: userDisplayName || t.userName,
                       status: 'pending',
                       trackingStatus: 'pending',
                       deliveryMethod: deliveryMethod,
@@ -3092,7 +3173,7 @@ export default function App() {
                       bookId,
                       bookTitle: book ? book.title : { en: 'Unknown', 'zh-HK': 'Unknown' },
                       userId: auth.currentUser.uid,
-                      userName: auth.currentUser.displayName || t.userName,
+                      userName: userDisplayName || t.userName,
                       status: 'pending',
                       trackingStatus: 'pending',
                       date: new Date().toISOString(),

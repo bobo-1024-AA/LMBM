@@ -142,11 +142,19 @@ export const translations = {
     requestNote: 'Request Note',
     warehouseName: 'Modern Library Warehouse',
     overdueBy: 'Overdue by {days} days',
+    // Activity Details
     activityDetails: 'Activity Details',
     borrowingDetails: 'Borrowing Details',
     extensionProgress: 'Extension Progress',
-    userName: 'z11bao36g',
+    userName: 'Library Member',
     libraryName: 'City Public Library',
+    
+    // Member Settings
+    editProfile: 'Edit Profile',
+    displayName: 'Display Name',
+    updateProfile: 'Update Profile',
+    profileUpdated: 'Profile updated successfully',
+
     
     // Admin
     adminDashboard: 'Admin Dashboard',
@@ -360,8 +368,15 @@ export const translations = {
     activityDetails: '活動詳情',
     borrowingDetails: '借閱詳情',
     extensionProgress: '續借進度',
-    userName: 'z11bao36g',
-    libraryName: 'City Public Library',
+    userName: '圖書館會員',
+    libraryName: '市立公共圖書館',
+    
+    // Member Settings
+    editProfile: '編輯個人資料',
+    displayName: '顯示名稱',
+    updateProfile: '更新個人資料',
+    profileUpdated: '個人資料更新成功',
+
     
     // Admin
     adminDashboard: '管理後台',
