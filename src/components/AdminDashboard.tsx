@@ -354,28 +354,38 @@ export const AdminDashboard = ({
     const path = 'requests';
     try {
       const req = requests.find((r: any) => r.id === reqId);
+      if (!req) {
+        showToast("Request not found", "error");
+        return;
+      }
+      
       const updateData: any = { status: newStatus };
       
       // Handle availableQuantity update
-      if (newStatus === 'approved' && req?.status !== 'approved') {
+      // Borrow: Decrease when approved
+      if (newStatus === 'approved' && req.status === 'pending' && req.type === 'borrow') {
         const book = books.find((b: any) => b.id === req.bookId);
         if (book) {
-          if (req.type === 'borrow') {
-            const newAvailable = Math.max(0, (book.availableQuantity ?? book.quantity ?? 1) - (req.quantity || 1));
-            await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
-          } else if (req.type === 'return') {
-            const newAvailable = Math.min(book.quantity || 1, (book.availableQuantity ?? book.quantity ?? 1) + (req.quantity || 1));
-            await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
-          }
+          const newAvailable = Math.max(0, (book.availableQuantity ?? book.quantity ?? 1) - (req.quantity || 1));
+          await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
         }
-      } else if (newStatus === 'rejected' && req?.status === 'approved') {
-        // Reverting approval
+      } 
+      // Return: Increase when trackingStatus is delivered (received)
+      else if (newStatus === 'approved' && trackingStatus === 'delivered' && req.trackingStatus !== 'delivered' && req.type === 'return') {
+        const book = books.find((b: any) => b.id === req.bookId);
+        if (book) {
+          const newAvailable = Math.min(book.quantity || 1, (book.availableQuantity ?? book.quantity ?? 1) + (req.quantity || 1));
+          await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
+        }
+      }
+      // Reverting rejection if needed (Reverting approval)
+      else if (newStatus === 'rejected' && req.status === 'approved') {
         const book = books.find((b: any) => b.id === req.bookId);
         if (book) {
           if (req.type === 'borrow') {
             const newAvailable = Math.min(book.quantity || 1, (book.availableQuantity ?? book.quantity ?? 1) + (req.quantity || 1));
             await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
-          } else if (req.type === 'return') {
+          } else if (req.type === 'return' && req.trackingStatus === 'delivered') {
             const newAvailable = Math.max(0, (book.availableQuantity ?? book.quantity ?? 1) - (req.quantity || 1));
             await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
           }
@@ -385,20 +395,23 @@ export const AdminDashboard = ({
       let finalTrackingStatus = trackingStatus;
       
       // If it's a borrow request with pickup method and it's being approved
-      if (newStatus === 'approved' && req?.type === 'borrow' && req?.deliveryMethod === 'pickup' && trackingStatus === 'waiting_to_send') {
+      if (newStatus === 'approved' && req.type === 'borrow' && req.deliveryMethod === 'pickup' && trackingStatus === 'waiting_to_send') {
         finalTrackingStatus = 'delivered';
       }
 
       if (finalTrackingStatus) {
         updateData.trackingStatus = finalTrackingStatus;
       }
+      
       if (finalTrackingStatus === 'delivered' || finalTrackingStatus === 'completed') {
         updateData.completedAt = new Date().toISOString();
       }
+      
       await updateDoc(doc(db, path, reqId), updateData);
-      showToast("Request updated successfully");
+      showToast(`Request ${newStatus} successfully`);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
+      console.error('Update Request Error:', error);
+      showToast("Failed to update request", "error");
     }
   };
 
