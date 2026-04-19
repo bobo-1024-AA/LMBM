@@ -1361,10 +1361,10 @@ export const AdminDashboard = ({
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8">
           <h2 className="text-lg font-bold text-slate-900">HKMU</h2>
-          <div className="flex items-center gap-6">
-            <div className="relative">
+          <div className="flex items-center gap-4 md:gap-6">
+            <div className="relative hidden md:block">
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
                 type="text" 
@@ -1428,12 +1428,19 @@ export const AdminDashboard = ({
                 </AnimatePresence>
               </div>
 
-              <div className="relative">
+              <div className="relative flex items-center gap-4">
                 <button 
                   onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                   className="hover:text-slate-600 transition-colors"
                 >
                   <Settings size={20} />
+                </button>
+                <button 
+                  onClick={handleAdminLogout}
+                  className="hover:text-red-600 transition-colors"
+                  title="Logout"
+                >
+                  <LogOut size={20} />
                 </button>
 
                 <AnimatePresence>

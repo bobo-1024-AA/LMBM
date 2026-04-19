@@ -2638,16 +2638,27 @@ export default function App() {
   const performLogout = async () => {
     try {
       await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
       setIsLoggedIn(false);
       setUserRole('user');
       setView('login');
-    } catch (error) {
-      console.error("Logout failed:", error);
+      setBorrowedBooks([]);
+      setPendingRequests([]);
+      setAddresses([]);
+      setUserDisplayName('');
     }
   };
 
   const handleLogout = async () => {
-    showConfirm(t.logout, t.logoutConfirm, performLogout);
+    console.log("Triggering handleLogout");
+    showConfirm(
+      t.logout || "Logout", 
+      t.logoutConfirm || "Are you sure you want to logout?", 
+      performLogout, 
+      'danger'
+    );
   };
 
   const handleAdminAction = async (id: string, status: 'approved' | 'rejected') => {
@@ -2685,8 +2696,9 @@ export default function App() {
   }
 
   return (
-    <div className="relative flex h-auto min-h-screen w-full max-w-[480px] mx-auto flex-col overflow-x-hidden shadow-2xl bg-white">
-      <LanguageSwitcher language={language} setLanguage={setLanguage} />
+    <>
+      <div className="relative flex h-auto min-h-screen w-full max-w-[480px] mx-auto flex-col overflow-x-hidden shadow-2xl bg-white">
+        <LanguageSwitcher language={language} setLanguage={setLanguage} />
       <AnimatePresence mode="wait">
         {view === 'login' && (
           <LoginView 
@@ -3206,30 +3218,31 @@ export default function App() {
           </div>
         </div>
       </Modal>
-
-      {/* Toast Notification */}
-      <AnimatePresence>
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Global Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={confirmDialog.isOpen}
-        title={confirmDialog.title}
-        message={confirmDialog.message}
-        type={confirmDialog.type}
-        onConfirm={() => {
-          confirmDialog.onConfirm();
-          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-        }}
-        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-      />
     </div>
+
+    {/* Toast Notification */}
+    <AnimatePresence>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+    </AnimatePresence>
+
+    {/* Global Confirm Dialog */}
+    <ConfirmDialog
+      isOpen={confirmDialog.isOpen}
+      title={confirmDialog.title}
+      message={confirmDialog.message}
+      type={confirmDialog.type}
+      onConfirm={() => {
+        confirmDialog.onConfirm();
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      }}
+      onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+    />
+    </>
   );
 }
