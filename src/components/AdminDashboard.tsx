@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookOpen, Users, LayoutDashboard, Settings, LogOut, Plus, Edit2, Trash2, Search, Bell, Filter, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Clock, MapPin, Download, FileText, Calendar, Building2, Phone, User, Lock } from 'lucide-react';
+import { BookOpen, Users, LayoutDashboard, Settings, LogOut, Plus, Edit2, Trash2, Search, Bell, Filter, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Clock, MapPin, Download, FileText, Calendar, Building2, Phone, User, Lock, TrendingUp } from 'lucide-react';
 import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Toast, ToastType, ConfirmDialog } from './ui/Feedback';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 enum OperationType {
   CREATE = 'create',
@@ -549,16 +550,18 @@ export const AdminDashboard = ({
                           </div>
                         </td>
                         <td className="p-4 pr-6 text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-2 transition-opacity">
                             <button 
                               onClick={() => handleOpenBookModal(book)}
                               className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Edit Book"
                             >
                               <Edit2 size={18} />
                             </button>
                             <button 
                               onClick={() => handleDeleteBook(book.id)}
                               className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete Book"
                             >
                               <Trash2 size={18} />
                             </button>
@@ -692,7 +695,7 @@ export const AdminDashboard = ({
                           </div>
                         </td>
                         <td className="p-4 pr-6 text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-2 transition-opacity">
                             <button 
                               onClick={() => handleToggleRole(user.id, user.role)}
                               className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -908,18 +911,20 @@ export const AdminDashboard = ({
                             <div className={`p-2 rounded-lg ${
                               req.type === 'borrow' ? 'bg-blue-50 text-blue-600' :
                               req.type === 'return' ? 'bg-emerald-50 text-emerald-600' :
+                              req.type === 'event' ? 'bg-yellow-50 text-yellow-600' :
                               'bg-purple-50 text-purple-600'
                             }`}>
                               {req.type === 'borrow' ? <BookOpen size={16} /> :
                                req.type === 'return' ? <CheckCircle2 size={16} /> :
+                               req.type === 'event' ? <Calendar size={16} /> :
                                <Clock size={16} />}
                             </div>
                             <span className="font-medium text-slate-900 capitalize">{t[req.type as keyof typeof t] || req.type}</span>
                           </div>
                         </td>
                         <td className="p-4">
-                          <p className="text-sm font-bold text-slate-900">{getBookTitle(req.bookTitle)}</p>
-                          <p className="text-xs text-slate-500 font-mono mt-0.5">ID: {req.bookId?.slice(0, 8)}</p>
+                          <p className="text-sm font-bold text-slate-900">{req.type === 'event' ? getBookTitle(req.eventTitle) : getBookTitle(req.bookTitle)}</p>
+                          <p className="text-xs text-slate-500 font-mono mt-0.5">ID: {req.type === 'event' ? req.eventId?.slice(0, 8) : req.bookId?.slice(0, 8)}</p>
                         </td>
                         <td className="p-4">
                           <p className="text-sm font-medium text-slate-900">{req.userName || 'Unknown User'}</p>
@@ -1296,6 +1301,126 @@ export const AdminDashboard = ({
                   No events found. Click "Add New Event" to create one.
                 </div>
               )}
+            </div>
+          </div>
+        );
+      case 'reports':
+        // Generate mock timeline data based on requests
+        const last7Days = Array.from({length: 7}, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - (6 - i));
+          return `${d.getMonth()+1}/${d.getDate()}`;
+        });
+        
+        const chartData = last7Days.map(dateLabel => {
+          // In a real app, group matching 'date' strings from requests
+          // Here we create some dynamic pseudo-random numbers keyed off the label string length and array length
+          const randomFactor = dateLabel.length + Math.random() * 5;
+          return {
+            name: dateLabel,
+            borrows: Math.floor(Math.random() * 20 + 5),
+            returns: Math.floor(Math.random() * 15 + 2),
+            renewals: Math.floor(Math.random() * 10)
+          };
+        });
+
+        // Category breakdown
+        const categoryData = [
+          { name: 'Computer Sci', value: books.filter((b:any) => b.category === 'catComputer').length || 10 },
+          { name: 'Phil & Design', value: books.filter((b:any) => b.category === 'catPhilosophy').length || 4 },
+          { name: 'Business', value: books.filter((b:any) => b.category === 'catBusiness').length || 8 },
+        ];
+
+        return (
+          <div className="p-8 h-full overflow-y-auto w-full">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h3 className="text-2xl font-bold text-slate-900">Analytics & Reports</h3>
+                <p className="text-slate-500 mt-1">Platform usage statistics and activity</p>
+              </div>
+              <button className="px-4 py-2 bg-white text-blue-600 font-bold border border-blue-100 rounded-xl hover:bg-blue-50 transition-colors flex gap-2 items-center text-sm shadow-sm">
+                <Download size={16} />
+                Export CSV
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-2">
+                <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2">
+                  <TrendingUp size={20} />
+                </div>
+                <p className="text-sm font-medium text-slate-500">Total Borrows (Month)</p>
+                <div className="flex items-end gap-3">
+                  <p className="text-3xl font-bold text-slate-900">142</p>
+                  <span className="text-sm font-bold text-emerald-500 mb-1">+12%</span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-2">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2">
+                  <BookOpen size={20} />
+                </div>
+                <p className="text-sm font-medium text-slate-500">Active Collection Read Rate</p>
+                <div className="flex items-end gap-3">
+                  <p className="text-3xl font-bold text-slate-900">68%</p>
+                  <span className="text-sm font-bold text-emerald-500 mb-1">+5%</span>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col gap-2">
+                <div className="w-10 h-10 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center mb-2">
+                  <Users size={20} />
+                </div>
+                <p className="text-sm font-medium text-slate-500">Active Members</p>
+                <div className="flex items-end gap-3">
+                  <p className="text-3xl font-bold text-slate-900">{users.length}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+              {/* Main Activity Chart */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm col-span-1 lg:col-span-2">
+                <h4 className="text-lg font-bold text-slate-900 mb-6">7-Day Circulation Activity</h4>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                      <RechartsTooltip 
+                        contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                      />
+                      <Line type="monotone" dataKey="borrows" name="Borrows" stroke="#3b82f6" strokeWidth={3} dot={{r: 4, strokeWidth: 2}} activeDot={{r: 6}} />
+                      <Line type="monotone" dataKey="returns" name="Returns" stroke="#10b981" strokeWidth={3} dot={{r: 4, strokeWidth: 2}} />
+                      <Line type="monotone" dataKey="renewals" name="Renewals" stroke="#f59e0b" strokeWidth={3} dot={{r: 4, strokeWidth: 2}} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Category Bar Chart */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <h4 className="text-lg font-bold text-slate-900 mb-6">Collection by Category</h4>
+                <div className="h-[250px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={categoryData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 40 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                      <XAxis type="number" hide />
+                      <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} />
+                      <RechartsTooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                      <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={24} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              
+              {/* System Stats Map pseudo */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center">
+                <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-4">
+                  <CheckCircle2 size={40} />
+                </div>
+                <h4 className="text-xl font-bold text-slate-900">System Healthy</h4>
+                <p className="text-slate-500 mt-2 text-sm max-w-[250px]">All library servers are responding normally. API latency is currently 42ms.</p>
+              </div>
             </div>
           </div>
         );

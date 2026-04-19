@@ -103,9 +103,11 @@ interface Request {
   id: string;
   userId: string;
   userName: string;
-  bookId: string;
-  bookTitle: string | { [key in Language]: string };
-  type: 'borrow' | 'return' | 'renew';
+  bookId?: string;
+  bookTitle?: string | { [key in Language]: string };
+  eventId?: string;
+  eventTitle?: string | { [key in Language]: string };
+  type: 'borrow' | 'return' | 'renew' | 'event';
   date: string;
   status: 'pending' | 'approved' | 'rejected';
   days?: number; // for renewal
@@ -1032,12 +1034,16 @@ const BulletinView = ({
   notifications, 
   setNotifications,
   events,
+  onRegisterEvent,
+  userRegisteredEvents,
   t,
   language
 }: { 
   notifications: Notification[], 
   setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>,
   events: any[],
+  onRegisterEvent: (event: any) => void,
+  userRegisteredEvents: string[],
   t: any,
   language: Language,
   key?: string
@@ -1201,12 +1207,33 @@ const BulletinView = ({
               </div>
             </div>
             
-            <button 
-              onClick={() => setSelectedEvent(null)}
-              className="w-full mt-8 py-3 bg-slate-900 text-white rounded-xl font-bold text-sm"
-            >
-              {t.close}
-            </button>
+            <div className="flex gap-4 mt-8">
+              <button 
+                onClick={() => setSelectedEvent(null)}
+                className="flex-1 py-3 bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors rounded-xl font-bold text-sm"
+              >
+                {t.close}
+              </button>
+              
+              {!userRegisteredEvents.includes(selectedEvent.id) ? (
+                <button 
+                  onClick={() => {
+                    onRegisterEvent(selectedEvent);
+                    setSelectedEvent(null);
+                  }}
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 transition-colors text-white rounded-xl font-bold text-sm"
+                >
+                  Register
+                </button>
+              ) : (
+                <button 
+                  disabled
+                  className="flex-1 py-3 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-xl font-bold text-sm flex justify-center items-center gap-2"
+                >
+                   <CheckCircle2 size={16} /> Registered
+                </button>
+              )}
+            </div>
           </div>
         )}
       </Modal>
@@ -2551,6 +2578,7 @@ export default function App() {
       if (userRole === 'user') {
         const borrowed: (Book & { dueDate?: string })[] = [];
         const bookStatus = new Map<string, number>(); // bookId -> count of active borrows
+        const dueDateMap = new Map<string, Date>(); // bookId -> calculated due date
 
         // Sort requests chronologically to process them in order
         const sortedReqs = [...reqs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -2559,8 +2587,18 @@ export default function App() {
           if (r.status === 'approved') {
             if (r.type === 'borrow') {
               bookStatus.set(r.bookId, (bookStatus.get(r.bookId) || 0) + 1);
+               // Initial check-out: 14 days from approval/borrow date
+               dueDateMap.set(r.bookId, new Date(new Date(r.date).getTime() + 14 * 24 * 60 * 60 * 1000));
+            } else if (r.type === 'renew') {
+              // Add renewal days to current due date
+              const extraDays = r.days || 7;
+              const currentDue = dueDateMap.get(r.bookId) || new Date(r.date);
+              dueDateMap.set(r.bookId, new Date(currentDue.getTime() + extraDays * 24 * 60 * 60 * 1000));
             } else if (r.type === 'return') {
               bookStatus.set(r.bookId, Math.max(0, (bookStatus.get(r.bookId) || 0) - 1));
+              if (bookStatus.get(r.bookId) === 0) {
+                dueDateMap.delete(r.bookId);
+              }
             }
           }
         }
@@ -2569,8 +2607,8 @@ export default function App() {
           if (count > 0) {
             const book = books.find(b => b.id === bookId) || ALL_BOOKS.find(b => b.id === bookId);
             if (book) {
-              // In a real app, dueDate would be calculated from the borrow date + renewals
-              borrowed.push({ ...book, dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() });
+              const dueDate = dueDateMap.get(bookId) || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+              borrowed.push({ ...book, dueDate: dueDate.toISOString() });
             }
           }
         });
@@ -2788,6 +2826,28 @@ export default function App() {
             notifications={notifications}
             setNotifications={setNotifications}
             events={events}
+            onRegisterEvent={async (event) => {
+              if (!auth.currentUser) return;
+              try {
+                const newReqRef = doc(collection(db, 'requests'));
+                await setDoc(newReqRef, {
+                  id: newReqRef.id,
+                  type: 'event',
+                  eventId: event.id,
+                  eventTitle: event.title,
+                  userId: auth.currentUser.uid,
+                  userName: userDisplayName || t.userName,
+                  status: 'approved', // Auto-approve events
+                  date: new Date().toISOString(),
+                  createdAt: serverTimestamp()
+                });
+                showToast('Successfully registered for ' + (event.title?.[language] || event.title?.en));
+              } catch (err) {
+                console.error('Registration failed:', err);
+                handleFirestoreError(err, OperationType.CREATE, 'requests');
+              }
+            }}
+            userRegisteredEvents={pendingRequests.filter(r => r.type === 'event').map(r => r.eventId as string).filter(Boolean)}
             t={t}
             language={language}
           />
@@ -3126,47 +3186,23 @@ export default function App() {
           </p>
 
           <div className="w-full mb-8 flex flex-col items-center">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider text-center mb-3">{t.quantity}</p>
-            <div className="flex flex-col items-center gap-1">
-              <button 
-                onClick={() => setRenewDays(prev => Math.max(1, prev - 1))}
-                className={`p-1 transition-colors ${renewDays === 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-blue-500'}`}
-                disabled={renewDays === 1}
-              >
-                <ChevronUp size={20} />
-              </button>
-              
-              <div className="relative w-28 h-28 bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden">
-                {/* Highlight bar */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <div className="w-full h-10 bg-blue-500/10 border-y border-blue-500/20" />
-                </div>
-                
-                <div className="h-full overflow-y-auto no-scrollbar snap-y snap-mandatory py-9">
-                  {[1, 2, 3, 4, 5, 6, 7].map((day, idx) => (
-                    <button
-                      key={`renew-day-${day}-${idx}`}
-                      onClick={() => setRenewDays(day)}
-                      className={`w-full h-10 flex items-center justify-center font-bold transition-all snap-center ${
-                        renewDays === day
-                        ? 'text-blue-600 text-base'
-                        : 'text-slate-400 text-xs opacity-40'
-                      }`}
-                    >
-                      {day} {t.days}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button 
-                onClick={() => setRenewDays(prev => Math.min(7, prev + 1))}
-                className={`p-1 transition-colors ${renewDays === 7 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-blue-500'}`}
-                disabled={renewDays === 7}
-              >
-                <ChevronDown size={20} />
-              </button>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider text-center mb-3">{t.quantity || 'Renew Days'}</p>
+            <div className="flex w-full overflow-x-auto no-scrollbar gap-2 px-4 snap-x pb-2 justify-start sm:justify-center">
+              {[1, 2, 3, 4, 5, 6, 7].map((day, idx) => (
+                <button
+                  key={`renew-day-${day}-${idx}`}
+                  onClick={() => setRenewDays(day)}
+                  className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all snap-center ${
+                    renewDays === day
+                    ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 scale-110'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {day}
+                </button>
+              ))}
             </div>
+            <p className="text-sm font-medium text-slate-500 mt-2">{t.days}</p>
           </div>
 
           <div className="w-full space-y-3">
