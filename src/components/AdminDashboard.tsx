@@ -353,6 +353,7 @@ export const AdminDashboard = ({
   const handleUpdateReqStatus = async (reqId: string, newStatus: string, trackingStatus?: string) => {
     const path = 'requests';
     try {
+      console.log('Admin Action: Updating request', { reqId, newStatus, trackingStatus });
       const req = requests.find((r: any) => r.id === reqId);
       if (!req) {
         showToast("Request not found", "error");
@@ -366,16 +367,30 @@ export const AdminDashboard = ({
       if (newStatus === 'approved' && req.status === 'pending' && req.type === 'borrow') {
         const book = books.find((b: any) => b.id === req.bookId);
         if (book) {
-          const newAvailable = Math.max(0, (book.availableQuantity ?? book.quantity ?? 1) - (req.quantity || 1));
-          await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
+          const currentQty = book.availableQuantity ?? book.quantity ?? 1;
+          const borrowQty = req.quantity || 1;
+          const newAvailable = Math.max(0, currentQty - borrowQty);
+          
+          console.log('Admin Action: Updating book inventory', { bookId: book.id, currentQty, borrowQty, newAvailable });
+          await updateDoc(doc(db, 'books', book.id), { 
+            availableQuantity: newAvailable,
+            updatedAt: serverTimestamp()
+          });
         }
       } 
       // Return: Increase when trackingStatus is delivered (received)
       else if (newStatus === 'approved' && trackingStatus === 'delivered' && req.trackingStatus !== 'delivered' && req.type === 'return') {
         const book = books.find((b: any) => b.id === req.bookId);
         if (book) {
-          const newAvailable = Math.min(book.quantity || 1, (book.availableQuantity ?? book.quantity ?? 1) + (req.quantity || 1));
-          await updateDoc(doc(db, 'books', book.id), { availableQuantity: newAvailable });
+          const currentQty = (book.availableQuantity ?? book.quantity ?? 1);
+          const returnQty = (req.quantity || 1);
+          const newAvailable = Math.min(book.quantity || 1, currentQty + returnQty);
+          
+          console.log('Admin Action: Returning book to inventory', { bookId: book.id, currentQty, returnQty, newAvailable });
+          await updateDoc(doc(db, 'books', book.id), { 
+            availableQuantity: newAvailable,
+            updatedAt: serverTimestamp()
+          });
         }
       }
       // Reverting rejection if needed (Reverting approval)
@@ -407,11 +422,25 @@ export const AdminDashboard = ({
         updateData.completedAt = new Date().toISOString();
       }
       
-      await updateDoc(doc(db, path, reqId), updateData);
-      showToast(`Request ${newStatus} successfully`);
-    } catch (error) {
-      console.error('Update Request Error:', error);
-      showToast("Failed to update request", "error");
+      console.log('Admin Action: Committing request update', updateData);
+      await updateDoc(doc(db, path, reqId), {
+        ...updateData,
+        updatedAt: serverTimestamp()
+      });
+      showToast(`Request marked as ${newStatus}`);
+    } catch (error: any) {
+      console.error('Update Request Detailed Error:', error);
+      const errorMessage = error?.message || String(error);
+      const isPermissionError = errorMessage.toLowerCase().includes('permission') || errorMessage.toLowerCase().includes('insufficient');
+      
+      let displayError = "Failed to update request";
+      if (isPermissionError) {
+        displayError = "Permission denied (Admin only)";
+      } else if (errorMessage.includes("offline")) {
+        displayError = "Currently offline. Please check connection.";
+      }
+      
+      showToast(displayError, "error");
     }
   };
 
@@ -443,7 +472,7 @@ export const AdminDashboard = ({
           <div className="p-8">
             <div className="flex justify-between items-center mb-8">
               <div>
-                <h2 className="text-3xl font-bold text-slate-900 mb-2">Book Inventory</h2>
+                <h2 className="text-3xl font-bold text-slate-900 mb-2">{t.inventoryManager}</h2>
                 <p className="text-slate-500">Manage the digital footprint of your physical collection.</p>
               </div>
               <button 
@@ -451,7 +480,7 @@ export const AdminDashboard = ({
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-colors"
               >
                 <Plus size={20} />
-                Add New Book
+                {t.add}
               </button>
             </div>
 
@@ -486,8 +515,8 @@ export const AdminDashboard = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredBooks.map((book: any) => (
-                      <tr key={`desktop-${book.id}`} className="hover:bg-slate-50/50 transition-colors group">
+                    {filteredBooks.map((book: any, idx: number) => (
+                      <tr key={`desktop-book-inventory-${book.id}-${idx}`} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="p-4 pl-6">
                           <div className="flex items-center gap-4">
                             <img src={book.cover || 'https://via.placeholder.com/40x60'} alt="" className="w-10 h-14 object-cover rounded shadow-sm" />
@@ -543,8 +572,8 @@ export const AdminDashboard = ({
 
               {/* Mobile Inventory Cards */}
               <div className="md:hidden divide-y divide-slate-100">
-                {filteredBooks.map((book: any) => (
-                  <div key={`mobile-${book.id}`} className="p-4 space-y-4">
+                {filteredBooks.map((book: any, idx: number) => (
+                  <div key={`mobile-book-card-${book.id}-${idx}`} className="p-4 space-y-4">
                     <div className="flex gap-4">
                       <img src={book.cover || 'https://via.placeholder.com/40x60'} alt="" className="w-16 h-24 object-cover rounded shadow-sm shrink-0" />
                       <div className="flex-1 min-w-0">
@@ -596,7 +625,7 @@ export const AdminDashboard = ({
           <div className="p-8">
             <div className="flex justify-between items-center mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">User Management</h2>
+                <h2 className="text-2xl font-bold text-slate-900">{t.userManager}</h2>
                 <p className="text-slate-500 mt-1">Manage library members and administrative roles.</p>
               </div>
             </div>
@@ -627,8 +656,8 @@ export const AdminDashboard = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredUsers.map((user: any) => (
-                      <tr key={`desktop-${user.id}`} className="hover:bg-slate-50/50 transition-colors group">
+                    {filteredUsers.map((user: any, idx: number) => (
+                      <tr key={`desktop-user-inventory-${user.id}-${idx}`} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="p-4 pl-6">
                           <div className="flex items-center gap-4">
                             {user.avatar ? (
@@ -681,8 +710,8 @@ export const AdminDashboard = ({
 
               {/* Mobile Users Cards */}
               <div className="md:hidden divide-y divide-slate-100">
-                {filteredUsers.map((user: any) => (
-                  <div key={`mobile-${user.id}`} className="p-4 space-y-4">
+                {filteredUsers.map((user: any, idx: number) => (
+                  <div key={`mobile-user-card-${user.id}-${idx}`} className="p-4 space-y-4">
                     <div className="flex items-center gap-4">
                       {user.avatar ? (
                         <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-full object-cover shadow-sm shrink-0" />
@@ -730,8 +759,8 @@ export const AdminDashboard = ({
           <div className="p-4 md:p-8 space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">Dashboard Overview</h2>
-                <p className="text-slate-500 mt-1 text-sm md:text-base">System status and quick metrics.</p>
+                <h2 className="text-2xl font-bold text-slate-900">{t.dashboardOverview}</h2>
+                <p className="text-slate-500 mt-1 text-sm md:text-base">{t.systemStatus}</p>
               </div>
             </div>
 
@@ -747,7 +776,7 @@ export const AdminDashboard = ({
                 </div>
                 <div>
                   <p className="text-2xl md:text-3xl font-bold text-slate-900">{books.length}</p>
-                  <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">Total Books</p>
+                  <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">{t.totalBooks}</p>
                 </div>
               </button>
 
@@ -762,7 +791,7 @@ export const AdminDashboard = ({
                 </div>
                 <div>
                   <p className="text-2xl md:text-3xl font-bold text-slate-900">{users.length}</p>
-                  <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">Total Members</p>
+                  <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">{t.totalMembers}</p>
                 </div>
               </button>
 
@@ -779,7 +808,7 @@ export const AdminDashboard = ({
                   <p className="text-2xl md:text-3xl font-bold text-slate-900">
                     {requests?.filter((r: any) => r.status === 'pending').length || 0}
                   </p>
-                  <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">Pending Requests</p>
+                  <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">{t.pendingRequestsLimit}</p>
                 </div>
               </button>
 
@@ -796,7 +825,7 @@ export const AdminDashboard = ({
                   <p className="text-2xl md:text-3xl font-bold text-slate-900">
                     {requests?.filter((r: any) => r.status === 'approved' && r.type === 'borrow').length || 0}
                   </p>
-                  <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">Active Borrows</p>
+                  <p className="text-xs md:text-sm font-medium text-slate-500 mt-1">{t.activeBorrows}</p>
                 </div>
               </button>
             </div>
@@ -804,18 +833,18 @@ export const AdminDashboard = ({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-bold text-slate-900">Recent Activity</h3>
+                  <h3 className="text-lg font-bold text-slate-900">{t.recentActivity}</h3>
                   <button 
                     onClick={() => setActiveMenu('circulation')}
                     className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
                   >
-                    View All
+                    {t.viewAllCat}
                   </button>
                 </div>
                 <div className="space-y-4">
-                  {requests?.slice(0, 5).map((req: any) => (
+                  {requests?.slice(0, 5).map((req: any, idx: number) => (
                     <button 
-                      key={req.id} 
+                      key={`dashboard-overview-req-${req.id}-${idx}`} 
                       onClick={() => {
                         setActiveMenu('circulation');
                         setSearchQuery(getBookTitle(req.bookTitle));
@@ -825,7 +854,7 @@ export const AdminDashboard = ({
                       <div className={`w-2 h-2 rounded-full shrink-0 ${req.status === 'pending' ? 'bg-amber-500' : req.status === 'approved' ? 'bg-emerald-500' : 'bg-red-500'}`} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
-                          {req.type === 'borrow' ? 'Borrow Request' : req.type === 'return' ? 'Return Request' : 'Renewal Request'}
+                          {req.type === 'borrow' ? t.borrowRequest : req.type === 'return' ? t.returnRequest : t.renewRequest}
                         </p>
                         <p className="text-xs text-slate-500 truncate">
                           {getBookTitle(req.bookTitle)} • {new Date(req.date).toLocaleDateString()}
@@ -833,14 +862,14 @@ export const AdminDashboard = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded-md uppercase tracking-wider text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                          {req.status}
+                          {t[req.status as keyof typeof t] || req.status}
                         </span>
                         <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-400 transition-colors" />
                       </div>
                     </button>
                   ))}
                   {(!requests || requests.length === 0) && (
-                    <p className="text-sm text-slate-500 text-center py-4">No recent activity.</p>
+                    <p className="text-sm text-slate-500 text-center py-4">{t.noRecentActivity}</p>
                   )}
                 </div>
               </div>
@@ -852,8 +881,8 @@ export const AdminDashboard = ({
           <div className="p-4 md:p-8 space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">Circulation Management</h2>
-                <p className="text-slate-500 mt-1 text-sm md:text-base">Review and process book borrow, return, and renewal requests.</p>
+                <h2 className="text-2xl font-bold text-slate-900">{t.circulationManager}</h2>
+                <p className="text-slate-500 mt-1 text-sm md:text-base">{t.circulationDesc}</p>
               </div>
             </div>
 
@@ -872,8 +901,8 @@ export const AdminDashboard = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredRequests?.map((req: any) => (
-                      <tr key={`desktop-${req.id}`} className="hover:bg-slate-50/50 transition-colors">
+                    {filteredRequests?.map((req: any, idx: number) => (
+                      <tr key={`desktop-req-${req.id}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
                         <td className="p-4 pl-6">
                           <div className="flex items-center gap-3">
                             <div className={`p-2 rounded-lg ${
@@ -885,7 +914,7 @@ export const AdminDashboard = ({
                                req.type === 'return' ? <CheckCircle2 size={16} /> :
                                <Clock size={16} />}
                             </div>
-                            <span className="font-medium text-slate-900 capitalize">{req.type}</span>
+                            <span className="font-medium text-slate-900 capitalize">{t[req.type as keyof typeof t] || req.type}</span>
                           </div>
                         </td>
                         <td className="p-4">
@@ -899,7 +928,7 @@ export const AdminDashboard = ({
                           <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider ${
                             req.deliveryMethod === 'pickup' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'
                           }`}>
-                            {req.deliveryMethod || 'delivery'}
+                            {t[req.deliveryMethod as keyof typeof t] || req.deliveryMethod || t.delivery}
                           </span>
                         </td>
                         <td className="p-4">
@@ -911,7 +940,7 @@ export const AdminDashboard = ({
                             req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
                             'bg-red-50 text-red-600'
                           }`}>
-                            {req.status}
+                            {t[req.status as keyof typeof t] || req.status}
                           </span>
                         </td>
                         <td className="p-4 pr-6 text-right">
@@ -919,15 +948,15 @@ export const AdminDashboard = ({
                             <div className="flex items-center justify-end gap-2">
                               <button 
                                 onClick={() => handleUpdateReqStatus(req.id, 'approved', req.type === 'borrow' ? 'waiting_to_send' : req.type === 'return' ? 'please_send' : 'completed')}
-                                className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors"
+                                className="px-4 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl text-[11px] font-bold transition-all active:scale-95 shadow-sm hover:shadow-md hover:shadow-emerald-200/50"
                               >
-                                Approve
+                                {t.approve || 'Approve'}
                               </button>
                               <button 
                                 onClick={() => handleUpdateReqStatus(req.id, 'rejected')}
-                                className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-colors"
+                                className="px-4 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-[11px] font-bold transition-all active:scale-95 shadow-sm hover:shadow-md hover:shadow-rose-200/50"
                               >
-                                Reject
+                                {t.reject || 'Reject'}
                               </button>
                             </div>
                           ) : req.status === 'approved' && req.trackingStatus !== 'delivered' && req.trackingStatus !== 'completed' ? (
@@ -974,8 +1003,8 @@ export const AdminDashboard = ({
 
               {/* Mobile Circulation Cards */}
               <div className="md:hidden divide-y divide-slate-100">
-                {filteredRequests?.map((req: any) => (
-                  <div key={`mobile-${req.id}`} className="p-4 space-y-3">
+                {filteredRequests?.map((req: any, idx: number) => (
+                  <div key={`mobile-req-${req.id}-${idx}`} className="p-4 space-y-3">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-lg ${
@@ -988,7 +1017,7 @@ export const AdminDashboard = ({
                            <Clock size={16} />}
                         </div>
                         <div>
-                          <span className="font-bold text-slate-900 capitalize block">{req.type}</span>
+                          <span className="font-bold text-slate-900 capitalize block">{t[req.type as keyof typeof t] || req.type}</span>
                           <span className="text-xs text-slate-500">{new Date(req.date).toLocaleDateString()}</span>
                         </div>
                       </div>
@@ -997,17 +1026,17 @@ export const AdminDashboard = ({
                         req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
                         'bg-red-50 text-red-600'
                       }`}>
-                        {req.status}
+                        {t[req.status as keyof typeof t] || req.status}
                       </span>
                     </div>
                     <div className="bg-slate-50 p-3 rounded-xl">
                       <p className="text-sm font-bold text-slate-900 truncate">{getBookTitle(req.bookTitle)}</p>
                       <div className="flex items-center justify-between mt-1">
-                        <p className="text-xs text-slate-500">By: {req.userName || 'Unknown User'}</p>
+                        <p className="text-xs text-slate-500">{t.user}: {req.userName || 'Unknown User'}</p>
                         <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider ${
                           req.deliveryMethod === 'pickup' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
                         }`}>
-                          {req.deliveryMethod || 'delivery'}
+                          {t[req.deliveryMethod as keyof typeof t] || req.deliveryMethod || t.delivery}
                         </span>
                       </div>
                     </div>
@@ -1017,13 +1046,13 @@ export const AdminDashboard = ({
                           onClick={() => handleUpdateReqStatus(req.id, 'approved', req.type === 'borrow' ? 'waiting_to_send' : req.type === 'return' ? 'please_send' : 'completed')}
                           className="flex-1 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-xl text-sm font-bold transition-colors"
                         >
-                          Approve
+                          {t.approve}
                         </button>
                         <button 
                           onClick={() => handleUpdateReqStatus(req.id, 'rejected')}
                           className="flex-1 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm font-bold transition-colors"
                         >
-                          Reject
+                          {t.reject}
                         </button>
                       </div>
                     ) : req.status === 'approved' && req.trackingStatus !== 'delivered' && req.trackingStatus !== 'completed' ? (
@@ -1033,7 +1062,7 @@ export const AdminDashboard = ({
                             onClick={() => handleUpdateReqStatus(req.id, 'approved', 'sent')}
                             className="flex-1 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl text-sm font-bold transition-colors"
                           >
-                            Mark as Sent
+                            {t.statusSent}
                           </button>
                         )}
                         {req.type === 'borrow' && req.trackingStatus === 'sent' && (
@@ -1041,7 +1070,7 @@ export const AdminDashboard = ({
                             onClick={() => handleUpdateReqStatus(req.id, 'approved', 'delivered')}
                             className="flex-1 py-2 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-xl text-sm font-bold transition-colors"
                           >
-                            Mark as Delivered
+                            {t.statusDelivered}
                           </button>
                         )}
                         {req.type === 'return' && req.trackingStatus === 'please_send' && (
@@ -1049,7 +1078,7 @@ export const AdminDashboard = ({
                             onClick={() => handleUpdateReqStatus(req.id, 'approved', 'delivered')}
                             className="flex-1 py-2 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-xl text-sm font-bold transition-colors"
                           >
-                            Mark as Returned
+                            {t.return}
                           </button>
                         )}
                       </div>
@@ -1082,7 +1111,7 @@ export const AdminDashboard = ({
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Most Popular Books</h3>
                 <div className="space-y-4">
                   {books.slice(0, 3).map((book: any, idx: number) => (
-                    <div key={`popular-${book.id}`} className="flex items-center gap-4">
+                    <div key={`popular-books-stats-${book.id}-${idx}`} className="flex items-center gap-4">
                       <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 shrink-0">
                         {idx + 1}
                       </div>
@@ -1099,7 +1128,7 @@ export const AdminDashboard = ({
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Active Users</h3>
                 <div className="space-y-4">
                   {users.slice(0, 3).map((user: any, idx: number) => (
-                    <div key={`active-${user.id}`} className="flex items-center gap-4">
+                    <div key={`active-users-stats-${user.id}-${idx}`} className="flex items-center gap-4">
                       {user.avatar ? (
                         <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
                       ) : (
@@ -1208,7 +1237,7 @@ export const AdminDashboard = ({
           <div className="p-4 md:p-8 space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">Library Events</h2>
+                <h2 className="text-2xl font-bold text-slate-900">{t.eventManager}</h2>
                 <p className="text-slate-500 mt-1 text-sm md:text-base">Manage workshops, readings, and community events.</p>
               </div>
               <button 
@@ -1216,13 +1245,13 @@ export const AdminDashboard = ({
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-colors"
               >
                 <Plus size={20} />
-                Add New Event
+                {t.add}
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {events.map((event: any) => (
-                <div key={event.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group">
+              {events.map((event: any, idx: number) => (
+                <div key={`admin-event-${event.id}-${idx}`} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group">
                   <div className="h-40 relative">
                     <img src={event.image || 'https://via.placeholder.com/400x200'} alt="" className="w-full h-full object-cover" />
                     <div className="absolute top-4 right-4 px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-xs font-bold text-blue-500">
@@ -1297,9 +1326,9 @@ export const AdminDashboard = ({
             { id: 'events', icon: Calendar, label: 'Library Events' },
             { id: 'reports', icon: FileText, label: 'Reports & Analytics' },
             { id: 'settings', icon: Settings, label: 'Settings' },
-          ].map(item => (
+          ].map((item, idx) => (
             <button
-              key={item.id}
+              key={`admin-sidebar-${item.id}-${idx}`}
               onClick={() => setActiveMenu(item.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 activeMenu === item.id 
@@ -1372,8 +1401,8 @@ export const AdminDashboard = ({
                         )}
                       </div>
                       <div className="max-h-96 overflow-y-auto">
-                        {notifications.length > 0 ? notifications.map((n: any) => (
-                          <div key={`admin-notif-${n.id}`} className="p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer">
+                        {notifications.length > 0 ? notifications.map((n: any, idx: number) => (
+                          <div key={`admin-notif-${n.id}-${idx}`} className="p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer">
                             <div className="flex gap-3">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${n.color}`}>
                                 <n.icon size={16} />
@@ -1463,9 +1492,9 @@ export const AdminDashboard = ({
             { id: 'inventory', icon: BookOpen, label: 'Books' },
             { id: 'users', icon: Users, label: 'Users' },
             { id: 'circulation', icon: Clock, label: 'Circ' },
-          ].map(item => (
+          ].map((item, idx) => (
             <button 
-              key={item.id}
+              key={`admin-nav-${item.id}-${idx}`}
               onClick={() => setActiveMenu(item.id)}
               className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${
                 activeMenu === item.id ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'

@@ -79,10 +79,13 @@ service cloud.firestore {
     }
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.uid == "70t9c2f4NfMieoBALjueQnyRHLg2") ||
+        (
+          request.auth.token.email == "z11bao36g@gmail.com" ||
           request.auth.uid == "ezLgaHfXhtYV8XpCX986mIYWWHv1" ||
-          (request.auth.token.email == "z11bao36g@gmail.com" && request.auth.token.email_verified == true));
+          request.auth.token.email == "admin@hkmu.edu.hk" ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
+        );
     }
     function uidUnchanged() {
       return !('id' in request.resource.data) || request.resource.data.id == request.auth.uid;
@@ -143,6 +146,7 @@ service cloud.firestore {
              (!('days' in data) || data.days is number) &&
              (!('quantity' in data) || data.quantity is number) &&
              (!('trackingStatus' in data) || (data.trackingStatus is string && data.trackingStatus.size() < 50)) &&
+             (!('deliveryMethod' in data) || (data.deliveryMethod is string && data.deliveryMethod.size() < 50)) &&
              (!('completedAt' in data) || data.completedAt is timestamp || (data.completedAt is string && data.completedAt.size() < 50)) &&
              (!('createdAt' in data) || data.createdAt is timestamp) &&
              (!('updatedAt' in data) || data.updatedAt is timestamp);
@@ -203,25 +207,26 @@ service cloud.firestore {
 
     match /books/{bookId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidBook(request.resource.data);
-      allow update: if isAdmin() && isValidBook(request.resource.data);
-      allow delete: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /requests/{requestId} {
       allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
       allow create: if isAuthenticated() && isValidRequest(request.resource.data) && 
                     (isOwner(request.resource.data.userId) || isAdmin());
-      allow update: if isAdmin() && isValidRequest(request.resource.data) && 
-                    request.resource.data.userId == resource.data.userId;
+      allow update: if isAdmin() || (
+                      isAuthenticated() && 
+                      isOwner(resource.data.userId) &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+                      request.resource.data.status == 'cancelled'
+                    );
       allow delete: if isAdmin();
     }
 
     match /events/{eventId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidEvent(request.resource.data);
-      allow update: if isAdmin() && isValidEvent(request.resource.data);
-      allow delete: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
   }
 }

@@ -422,9 +422,9 @@ const BottomNav = ({
 
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white/80 backdrop-blur-lg border-t border-slate-200 px-6 py-3 flex justify-between items-center z-50">
-      {navItems.map((item) => (
+      {navItems.map((item, idx) => (
         <button
-          key={item.id}
+          key={`bottom-nav-${item.id}-${idx}`}
           onClick={() => setView(item.id)}
           className={`flex flex-col items-center gap-1 transition-colors relative ${
             currentView === item.id ? 'text-blue-500' : 'text-slate-400'
@@ -715,7 +715,7 @@ const HomeView = ({
           { icon: SearchCode, label: t.explore, color: 'bg-teal-50 text-teal-600', action: onExploreClick },
           { icon: BookOpen, label: t.borrowed, color: 'bg-yellow-50 text-yellow-600', action: onBorrowedClick },
         ].map((item, i) => (
-          <button key={`quick-${i}`} onClick={item.action} className="flex flex-col items-center gap-2 active:scale-95 transition-transform">
+          <button key={`home-quick-${i}`} onClick={item.action} className="flex flex-col items-center gap-2 active:scale-95 transition-transform">
             <div className={`size-14 rounded-2xl flex items-center justify-center ${item.color}`}>
               <item.icon size={24} />
             </div>
@@ -742,10 +742,10 @@ const HomeView = ({
 
         {/* Integrated Category Filter */}
         <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6">
-          {CATEGORIES.map((cat, i) => (
-            <button 
-              key={i} 
-              onClick={() => setSelectedCategory(cat)}
+            {CATEGORIES.map((cat, idx) => (
+              <button
+                key={`home-category-filter-${cat}-${idx}`}
+                onClick={() => setSelectedCategory(cat)}
               className={`flex-shrink-0 px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${
                 selectedCategory === cat 
                 ? 'bg-blue-500 text-white shadow-md shadow-blue-200' 
@@ -759,9 +759,9 @@ const HomeView = ({
 
         <div className="flex gap-6 overflow-x-auto pb-4 no-scrollbar">
           {filteredBooks.length > 0 ? (
-            filteredBooks.map((book) => (
+            filteredBooks.map((book, idx) => (
               <div 
-                key={`home-${book.id}`} 
+                key={`home-recommend-book-${book.id}-${idx}`} 
                 className="flex-shrink-0 w-40 cursor-pointer active:scale-95 transition-transform"
                 onClick={() => onBookClick(book)}
               >
@@ -806,9 +806,9 @@ const HomeView = ({
             </div>
             
             <div className="space-y-2 mb-6">
-              {borrowedBooks.map((book) => (
+              {borrowedBooks.map((book, idx) => (
                 <div 
-                  key={book.id}
+                  key={`renew-select-${book.id}-${idx}`}
                   onClick={() => {
                     setSelectedRenewBooks(prev => 
                       prev.includes(book.id) 
@@ -947,11 +947,10 @@ const LibraryView = ({
               {sortBy === 'title' ? t.title : t.author}
             </button>
           </div>
-          
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            {CATEGORIES.map((cat) => (
+            {CATEGORIES.map((cat, idx) => (
               <button
-                key={cat}
+                key={`library-category-tab-${cat}-${idx}`}
                 onClick={() => setSelectedCategory(cat)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
                   selectedCategory === cat 
@@ -965,12 +964,11 @@ const LibraryView = ({
           </div>
         </div>
       </header>
-      
       <div className="p-6 space-y-4">
         {filteredBooks.length > 0 ? (
-          filteredBooks.map((book) => (
+          filteredBooks.map((book, idx) => (
             <div 
-              key={`library-${book.id}`} 
+              key={`library-collection-book-${book.id}-${idx}`} 
               className="flex gap-4 p-4 bg-white rounded-2xl shadow-sm border border-slate-100 cursor-pointer active:scale-[0.98] transition-all"
               onClick={() => onBookClick(book)}
             >
@@ -1088,9 +1086,9 @@ const BulletinView = ({
       <div className="p-6">
         {activeTab === 'news' ? (
           <div className="space-y-6">
-            {events.map((event) => (
+            {events.map((event, idx) => (
               <div 
-                key={`event-${event.id}`} 
+                key={`bulletin-event-${event.id}-${idx}`} 
                 onClick={() => setSelectedEvent(event)}
                 className="bg-white rounded-3xl overflow-hidden shadow-md border border-slate-100 active:scale-[0.98] transition-all cursor-pointer"
               >
@@ -1144,9 +1142,9 @@ const BulletinView = ({
             </div>
             
             {notifications.length > 0 ? (
-              notifications.map((notif) => (
+              notifications.map((notif, idx) => (
                 <div 
-                  key={`notif-${notif.id}`}
+                  key={`bulletin-notif-${notif.id}-${idx}`}
                   onClick={() => markAsRead(notif.id)}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] ${
                     notif.isRead ? 'bg-white border-slate-100' : 'bg-blue-50/50 border-blue-100 ring-1 ring-blue-100'
@@ -1193,7 +1191,7 @@ const BulletinView = ({
               <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.agenda}</h5>
               <div className="space-y-3">
                 {selectedEvent.agenda?.[language].map((item, i) => (
-                  <div key={`agenda-${i}`} className="flex gap-3 items-start">
+                  <div key={`bulletin-agenda-${selectedEvent.id}-${i}`} className="flex gap-3 items-start">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
                     <p className="text-sm text-slate-700 leading-relaxed">{item}</p>
                   </div>
@@ -1666,9 +1664,9 @@ const ProfileView = ({
           { id: 'borrowed', label: t.borrowed, value: borrowedBooks.length.toString().padStart(2, '0'), color: 'text-blue-500' },
           { id: 'returned', label: t.returned, value: returnedActivities.length.toString().padStart(2, '0'), color: 'text-slate-900' },
           { id: 'overdue', label: t.overdue, value: overdueBooks.length.toString().padStart(2, '0'), color: 'text-red-500' },
-        ].map((stat) => (
+        ].map((stat, idx) => (
           <button 
-            key={stat.id} 
+            key={`profile-stat-${stat.id}-${idx}`} 
             onClick={() => setActiveStatModal(stat.id as any)}
             className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm text-left active:scale-95 transition-transform"
           >
@@ -1691,8 +1689,8 @@ const ProfileView = ({
         <div className="py-4 space-y-4">
           {activeStatModal === 'borrowed' && (
             borrowedBooks.length > 0 ? (
-              borrowedBooks.map(book => (
-                <div key={`stat-borrowed-${book.id}`} className="flex gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              borrowedBooks.map((book, idx) => (
+                <div key={`stat-borrowed-${book.id}-${idx}`} className="flex gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
                   <img src={book.cover} className="w-12 h-16 object-cover rounded-lg shadow-sm" referrerPolicy="no-referrer" />
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-slate-900 truncate">{renderTranslatable(book.title, language)}</h4>
@@ -1726,8 +1724,8 @@ const ProfileView = ({
 
           {activeStatModal === 'returned' && (
             returnedActivities.length > 0 ? (
-              returnedActivities.map(activity => (
-                <div key={`stat-returned-${activity.id}`} className="flex gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              returnedActivities.map((activity, idx) => (
+                <div key={`stat-returned-${activity.id}-${idx}`} className="flex gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
                   <div className="w-12 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
                     <History size={24} />
                   </div>
@@ -1745,8 +1743,8 @@ const ProfileView = ({
 
           {activeStatModal === 'overdue' && (
             overdueBooks.length > 0 ? (
-              overdueBooks.map(book => (
-                <div key={`stat-overdue-${book.id}`} className="flex gap-4 p-3 rounded-2xl bg-red-50 border border-red-100">
+              overdueBooks.map((book, idx) => (
+                <div key={`stat-overdue-${book.id}-${idx}`} className="flex gap-4 p-3 rounded-2xl bg-red-50 border border-red-100">
                   <img src={book.cover} className="w-12 h-16 object-cover rounded-lg shadow-sm" referrerPolicy="no-referrer" />
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-red-900 truncate">{renderTranslatable(book.title, language)}</h4>
@@ -1774,7 +1772,7 @@ const ProfileView = ({
             { icon: CalendarCheck, label: t.priority, description: t.priorityDesc, color: 'bg-purple-50 text-purple-500' },
           ].map((benefit, i) => (
             <button 
-              key={`benefit-${i}`} 
+              key={`profile-benefit-${i}`} 
               onClick={() => setSelectedBenefit(benefit)}
               className="flex-shrink-0 w-32 p-4 rounded-2xl bg-white border border-slate-100 shadow-sm flex flex-col items-center text-center active:scale-95 transition-transform"
             >
@@ -1817,9 +1815,9 @@ const ProfileView = ({
       <section className="mt-4 px-6 mb-8">
         <h3 className="text-lg font-bold mb-4 text-slate-900">{t.recentActivity}</h3>
         <div className="space-y-3">
-          {dynamicActivities.map((activity) => (
+          {dynamicActivities.map((activity, idx) => (
             <button 
-              key={activity.id} 
+              key={`dynamic-act-${activity.id}-${idx}`} 
               onClick={() => setSelectedActivity(activity)}
               className="w-full flex items-center gap-4 p-4 rounded-xl bg-white border border-slate-100 shadow-sm active:scale-[0.98] transition-transform text-left"
             >
@@ -2043,8 +2041,8 @@ const ProfileView = ({
       >
         <div className="py-4 space-y-4">
           {addresses.length > 0 ? (
-            addresses.map(addr => (
-              <div key={addr.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 relative">
+            addresses.map((addr, idx) => (
+              <div key={`${addr.id}-${idx}`} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 relative">
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold text-slate-900">{addr.recipientName}</h4>
@@ -2201,8 +2199,8 @@ const TrackingListView = ({
 
       <div className="p-6 space-y-4">
         {userRequests.length > 0 ? (
-          userRequests.map(req => (
-            <div key={req.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+          userRequests.map((req, idx) => (
+            <div key={`tracking-user-request-${req.id}-${idx}`} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
               <div className="flex justify-between items-start mb-4">
                 <div className="flex gap-3 items-center">
                   <div className={`size-10 rounded-2xl flex items-center justify-center ${
@@ -2223,7 +2221,7 @@ const TrackingListView = ({
                 <span className={`text-xs font-bold px-2 py-1 rounded-lg uppercase tracking-wider ${
                   req.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'
                 }`}>
-                  {req.status === 'pending' ? t.statusApproved : 
+                  {req.status === 'pending' ? t.pending : 
                    req.status === 'rejected' ? t.rejected :
                    (t[`status${req.trackingStatus?.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('')}` as keyof typeof t] || req.trackingStatus)}
                 </span>
@@ -2263,11 +2261,11 @@ const TrackingListView = ({
                       : req.type === 'renew'
                       ? ['approved', 'completed']
                       : ['approved', 'waiting_to_send', 'sent', 'delivered']
-                    ).map((step, idx, array) => {
-                      const isActive = req.trackingStatus === step || (req.status === 'pending' && idx === 0);
-                      const isPast = (req.status === 'approved' && array.indexOf(req.trackingStatus || '') >= idx) || (req.status === 'pending' && idx === 0);
+                    ).map((step, stepId, array) => {
+                      const isActive = req.trackingStatus === step || (req.status === 'pending' && stepId === 0);
+                      const isPast = (req.status === 'approved' && array.indexOf(req.trackingStatus || '') >= stepId) || (req.status === 'pending' && stepId === 0);
                       return (
-                        <div key={step} className="flex flex-col items-center gap-1.5">
+                        <div key={`tracking-step-${req.id}-${step}-${stepId}`} className="flex flex-col items-center gap-1.5">
                           <div className={`size-2.5 rounded-full ${isPast ? 'bg-blue-500' : 'bg-slate-200'} ${isActive ? 'ring-4 ring-blue-100' : ''}`} />
                           <span className={`text-[10px] font-bold uppercase tracking-tighter text-center ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
                             {t[`status${step.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('')}` as keyof typeof t] || step}
@@ -2376,6 +2374,18 @@ export default function App() {
     const q = query(collection(db, 'books'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (snapshot.empty) {
+        console.log("No books found in Firestore. Seeding books...");
+        ALL_BOOKS.forEach(async (book) => {
+          try {
+            await setDoc(doc(db, 'books', book.id), {
+              ...book,
+              availableQuantity: book.quantity,
+              updatedAt: serverTimestamp()
+            });
+          } catch (e) {
+            console.error("Error seeding book:", e);
+          }
+        });
         setBooks(ALL_BOOKS);
       } else {
         const fetchedBooks: Book[] = [];
@@ -2405,12 +2415,17 @@ export default function App() {
           let role: UserRole = 'user';
           if (userSnap.exists()) {
             role = userSnap.data().role as UserRole;
-            if (user.uid === 'ezLgaHfXhtYV8XpCX986mIYWWHv1' && role !== 'admin') {
+            const isAdminEmail = user.email === 'z11bao36g@gmail.com' || user.email === 'admin@hkmu.edu.hk';
+            const isAdminUid = user.uid === 'ezLgaHfXhtYV8XpCX986mIYWWHv1';
+            
+            if ((isAdminEmail || isAdminUid) && role !== 'admin') {
               role = 'admin';
               await updateDoc(userRef, { role: 'admin' });
             }
           } else {
-            role = (user.email === 'z11bao36g@gmail.com' || user.uid === 'ezLgaHfXhtYV8XpCX986mIYWWHv1') ? 'admin' : 'user';
+            const isAdminEmail = user.email === 'z11bao36g@gmail.com' || user.email === 'admin@hkmu.edu.hk';
+            const isAdminUid = user.uid === 'ezLgaHfXhtYV8XpCX986mIYWWHv1';
+            role = (isAdminEmail || isAdminUid) ? 'admin' : 'user';
             await setDoc(userRef, {
               id: user.uid,
               memberId: Math.floor(1000 + Math.random() * 9000) + '-' + Math.floor(1000 + Math.random() * 9000),
@@ -2811,9 +2826,9 @@ export default function App() {
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">{t.borrowed}</label>
                   <div className="space-y-2 max-h-32 overflow-y-auto pr-1 no-scrollbar">
                     {borrowedBooks.length > 0 ? (
-                      borrowedBooks.map((book) => (
+                      borrowedBooks.map((book, idx) => (
                         <button
-                          key={`borrow-modal-${book.id}`}
+                          key={`borrow-modal-book-${book.id}-${idx}`}
                           onClick={() => setBookName(renderTranslatable(book.title, language))}
                           className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all ${
                             bookName === renderTranslatable(book.title, language) 
@@ -3035,9 +3050,9 @@ export default function App() {
                 </div>
                 
                 <div className="h-full overflow-y-auto no-scrollbar snap-y snap-mandatory py-9">
-                  {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                  {[1, 2, 3, 4, 5, 6, 7].map((day, idx) => (
                     <button
-                      key={day}
+                      key={`renew-day-${day}-${idx}`}
                       onClick={() => setRenewDays(day)}
                       className={`w-full h-10 flex items-center justify-center font-bold transition-all snap-center ${
                         renewDays === day
@@ -3109,28 +3124,31 @@ export default function App() {
             </button>
           </div>
         </div>
-        <AnimatePresence>
-          {toast && (
-            <Toast
-              message={toast.message}
-              type={toast.type}
-              onClose={() => setToast(null)}
-            />
-          )}
-        </AnimatePresence>
-
-        <ConfirmDialog
-          isOpen={confirmDialog.isOpen}
-          title={confirmDialog.title}
-          message={confirmDialog.message}
-          type={confirmDialog.type}
-          onConfirm={() => {
-            confirmDialog.onConfirm();
-            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-          }}
-          onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-        />
       </Modal>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Global Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={() => {
+          confirmDialog.onConfirm();
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        }}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
